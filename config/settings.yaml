@@ -1,0 +1,36 @@
+# Dashboard + pipeline configuration.
+#
+# NOTE: the on-prem `dashboard/config.py` loads this file and applies its own
+# defaults. The keys below are the ones this Databricks-backed pipeline adds or
+# relies on; when you vendor in the on-prem `config/settings.yaml`, merge its
+# keys into this file rather than overwriting it.
+
+# --- Where the validation tooling reads its raw per-sensor input ---
+# Replaces the old input_data/ + convert-fugro/convert-wiertsema flow. The
+# Databricks export job (02_export_to_git.py) writes here, git carries it, and
+# the local IDE pulls it. See databricks/lib/source_read.py for the layout.
+source_data_dir: source_data
+
+# --- Review state (git-tracked, frozen schema) ---
+validation_data_dir: validation_data
+
+# --- Ephemeral build artifacts (gitignored) ---
+output_data_dir: output_data
+
+# --- KNMI forcing committed to the repo (cluster has no egress) ---
+forcing_dir: data/forcing
+forcing_station: 249
+
+# --- Validation store ---
+# FROZEN. Do not change: breaks merge compatibility with existing review work.
+store:
+  frequency: "1h"
+  schema: [timestamp, raw_data, gecontroleerd, afgekeurd, note]
+
+# --- Automated flag thresholds (v2/v3/v4), carried from the handover §5 ---
+flags:
+  v2_max_up: 0.30 # m/h
+  v2_max_down: -0.05 # m/h
+  v3_band: 0.15 # m above hmin
+  v3_min_run: 96 # steps
+  v4_iqr_factor: 1.5

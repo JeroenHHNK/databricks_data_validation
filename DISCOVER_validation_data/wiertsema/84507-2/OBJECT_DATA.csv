@@ -1,0 +1,8 @@
+﻿name_timeseries,bottom_filter,cross_sec_location,top_filter,n_sensor_files,source_files,is_nap,needs_review,review_reason,manually_edited
+84507-2 HB201PB01 PB_HB_DP 165+20 m_KRBIB,,KRBIB,,1,84507-2 HB201PB01 PB_HB_DP 165+20 m_KRBIB,True,True,no F- filter token in filename,False
+84507-2 HB202-FPB01 PB_HB_DP 165+20 m_INBIB,,INBIB,,1,84507-2 HB202-FPB01 PB_HB_DP 165+20 m_INBIB,True,True,no F- filter token in filename,False
+84507-2 HB203PB01 PB_HB_DP 170+10 m_BIT,,BIT,,1,84507-2 HB203PB01 PB_HB_DP 170+10 m_BIT,True,True,no F- filter token in filename,False
+84507-2 HB204PB01 PB_HB_DP 170+10 m_KRBIB,,KRBIB,,1,84507-2 HB204PB01 PB_HB_DP 170+10 m_KRBIB,True,True,no F- filter token in filename,False
+84507-2 HB205PB01 PB_HB_DP 170+10 m_INBIB,,INBIB,,1,84507-2 HB205PB01 PB_HB_DP 170+10 m_INBIB,True,True,no F- filter token in filename,False
+84507-2 HB206PB01 PB_HB_DP 176_KRBIB,,KRBIB,,1,84507-2 HB206PB01 PB_HB_DP 176_KRBIB,True,True,no F- filter token in filename,False
+84507-2 HB207PB01 PB_HB_DP 176_INBIB,,INBIB,,1,84507-2 HB207PB01 PB_HB_DP 176_INBIB,True,True,no F- filter token in filename,False

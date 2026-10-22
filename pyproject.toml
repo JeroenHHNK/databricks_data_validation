@@ -1,0 +1,46 @@
+[tool.poetry]
+name = "databricks-data-validation"
+version = "0.1.0"
+description = "Groundwater timeseries validation: Databricks source copy -> git -> Streamlit review -> validated Delta table."
+authors = ["jvanruitenbeek <jmpvanruitenbeek@gmail.com>"]
+readme = "README.md"
+packages = [
+    { include = "dataval" },
+    { include = "dashboard" },
+    { include = "functions" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+# --- Validation toolkit (vendored from the on-prem repo) ---
+pandas = "^2.2"
+numpy = "^2.0"
+openpyxl = "^3.1"
+plotly = "^5.22"
+streamlit = "^1.37"
+typer = "^0.12"
+pyyaml = "^6.0"
+seaborn = "^0.13"
+# pastas / xarray are only needed by functions/load_model.py and the forcings
+# helpers; keep them optional-but-present to match the on-prem environment.
+pastas = "^1.12"
+xarray = "^2024.6"
+
+# --- Databricks side (local CLI/SDK bridge + notebook helpers) ---
+databricks-sdk = "^0.30"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.2"
+ruff = "^0.5"
+
+[tool.poetry.scripts]
+# Vendored entry point. Available once dataval/cli.py is dropped in.
+dataval = "dataval.cli:app"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

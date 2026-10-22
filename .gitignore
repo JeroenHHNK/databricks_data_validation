@@ -1,0 +1,41 @@
+# --- Ephemeral build artifacts (rebuilt from source; never committed) ---
+output_data/
+
+# --- CSVs are ignored by default, with explicit exceptions below ---
+# This mirrors the on-prem repo policy: no data file is committed by accident.
+*.csv
+
+# Exceptions: the faithful source replication, the review state, and the
+# committed KNMI forcing are the things git IS meant to carry.
+!source_data/**/*.csv
+!validation_data/**/*.csv
+!DISCOVER_validation_data/**/*.csv
+!data/forcing/*.csv
+!tests/data/*.csv
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# --- Tooling ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- Databricks ---
+.databricks/
