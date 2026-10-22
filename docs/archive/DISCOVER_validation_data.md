@@ -27,10 +27,10 @@ timestamp,raw_data,gecontroleerd,afgekeurd,note
 ```
 
 `gecontroleerd` = reviewed (0/1), `afgekeurd` = rejected (0/1). This is the frozen schema
-`timestamp, raw_data, gecontroleerd, afgekeurd, note`; `04_validated_to_delta` already reads
+`timestamp, raw_data, gecontroleerd, afgekeurd, note`; `03_validated_to_delta` already reads
 exactly this shape. Note `raw_data` can be empty (a reviewed-but-null reading).
 
-## `OBJECT_DATA.csv` — richer than what `03_export_to_git` emits ⚠️
+## `OBJECT_DATA.csv` — richer than what `02_export_to_git` emits ⚠️
 
 The on-prem per-origin `OBJECT_DATA.csv` columns are:
 
@@ -43,7 +43,7 @@ Our generated `input_output/output_databricks/metadata/object_data.csv` instead 
 `filename, vendor, origin, series`, then every `source_copy_meetreeks` column (all of
 `meetreeks`, plus the `hl_cs_objecten.meetlocatie` match: `matched`, `match_key`,
 `cs_code`, `cs_naam`, `compartiment_naam`, `peilgebied_code`, `rd_x/rd_y`, `lon/lat`, …),
-then `n_rows` and the per-check flag counts `n_v1`..`n_v4`, `n_rule_a`, `n_rule_b`.
+then `n_rows`. Per-check flag counts are in the local `output_data/validation_summary.csv`.
 
 **These must be reconciled** when the toolkit is wired in. Rough correspondence:
 

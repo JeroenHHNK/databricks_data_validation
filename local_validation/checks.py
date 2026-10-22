@@ -1,9 +1,10 @@
 """Automated validation of one hourly head series: the v1-v4 flag layers and the
 autoflag rules A/B, plus the store-side application that protects manual review.
 
-Pure pandas/numpy (no Spark, no filesystem) so the exact same code runs on the
-cluster (`02_validate`, via `applyInPandas`) and later in the local Streamlit
-toolkit. The v2/v4 functions are ported from the on-prem
+Pure pandas/numpy, no filesystem: `data_io.py` handles reading
+`input_output/output_databricks/` and writing results, so these functions can be reused
+as-is by the Streamlit review toolkit. Runs locally, not on Databricks. The v2/v4
+functions are ported from the on-prem
 `functions/validation_functions.py` with the same `(df_in) -> (df_out, changed)`
 contract (docs/archive/DISCOVER_functions.md).
 
@@ -191,21 +192,6 @@ def validate_series(raw: pd.Series, *, begin_filter=None, eind_filter=None,
     return df
 
 
-def validate_group(pdf: pd.DataFrame, bounds: dict, th: Thresholds = Thresholds()) -> pd.DataFrame:
-    """`applyInPandas` adapter: one `meetreeks_id` group of (meetreeks_id, vendor,
-    timestamp, head) -> the long result frame. `bounds` maps meetreeks_id to
-    `(begin_filter, eind_filter, bovenkant_peilbuis)`."""
-    mid = pdf["meetreeks_id"].iloc[0]
-    vendor = pdf["vendor"].iloc[0]
-    b, e, top = bounds.get(mid, (None, None, None))
-    res = validate_series(pdf.set_index("timestamp")["head"],
-                          begin_filter=b, eind_filter=e, bovenkant_peilbuis=top, th=th)
-    res = res.reset_index()
-    res.insert(0, "vendor", vendor)
-    res.insert(0, "meetreeks_id", mid)
-    res["rule_a"] = res["rule_a"].astype(bool)
-    res["rule_b"] = res["rule_b"].astype(bool)
-    return res
 
 
 # --- Store-side application (local review store) -----------------------------

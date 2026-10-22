@@ -19,11 +19,11 @@ is pure pandas/numpy (no filesystem coupling) and is the part most directly reus
 ## Mapping to the new structure
 
 - **Ported:** the v1–v4 flag functions now live in
-  [`databricks_code/lib/validation.py`](../../databricks_code/lib/validation.py) with the same
+  [`local_validation/checks.py`](../../local_validation/checks.py) with the same
   `(df_in) -> (df_out, changed)` contract, plus the autoflag rules A/B and
-  `apply_autoflags()`. They run on the cluster in `02_validate`, and the local toolkit should
-  import them from there instead of re-vendoring `validation_functions.py`. Thresholds are
-  in [`config/settings.yaml`](../../config/settings.yaml) `flags:` / `autoflag:`.
+  `apply_autoflags()`. They run locally via `local_validation/validate.ipynb`; the Streamlit
+  toolkit should import them from there instead of re-vendoring `validation_functions.py`.
+  Thresholds are in [`config/settings.yaml`](../../config/settings.yaml) `flags:` / `autoflag:`.
 - **Check for duplication:** `remove_duplicate_and_fill_missing` vs
   `databricks_code/lib/source_read.py::clean_head` — both round to the hour, dedup, and insert
   NaN gaps. Decide which is authoritative so cleaning happens once.

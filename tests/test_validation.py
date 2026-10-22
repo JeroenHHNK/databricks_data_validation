@@ -1,4 +1,4 @@
-"""Unit tests for databricks_code/lib/validation.py (pure pandas, runs off-cluster)."""
+"""Unit tests for local_validation/checks.py and the settings wiring in data_io.py."""
 
 import sys
 from pathlib import Path
@@ -7,8 +7,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "databricks_code" / "lib"))
-import validation as val  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from local_validation import checks as val  # noqa: E402
+from local_validation import data_io  # noqa: E402
 
 
 def hourly(values, start="2024-01-01"):
@@ -97,13 +98,10 @@ def test_rule_b_margin_and_missing_filter():
     assert not val.validate_series(raw)["rule_b"].any()
 
 
-def test_validate_group_shape():
-    pdf = pd.DataFrame({"meetreeks_id": "abc", "vendor": "fugro",
-                        "timestamp": pd.date_range("2024-01-01", periods=3, freq="1h"),
-                        "head": [1.0, 1.0, 1.0]})
-    res = val.validate_group(pdf, {"abc": (None, None, None)})
-    assert list(res.columns) == ["meetreeks_id", "vendor", "timestamp", *val.RESULT_COLUMNS]
-    assert res["rule_a"].dtype == bool and len(res) == 3
+def test_thresholds_follow_settings_yaml():
+    th = data_io.thresholds(data_io.load_settings())
+    assert (th.v3_band, th.v3_min_run, th.rule_b_margin, th.freq) == (0.15, 1, 0.10, "1h")
+    assert data_io.thresholds({}) == val.Thresholds()      # missing keys keep the defaults
 
 
 def test_apply_autoflags_never_touches_reviewed_rows():

@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 04 · Validated data -> Delta table
+# MAGIC # 03 · Validated data -> Delta table
 # MAGIC Closes the loop. After the locally-validated copies in `input_output/output_repository/`
 # MAGIC have been pushed from the IDE and pulled into this Git folder, reads them, keeps the
 # MAGIC approved readings, joins them back to the source copy on `meetreeks_id`, and writes a

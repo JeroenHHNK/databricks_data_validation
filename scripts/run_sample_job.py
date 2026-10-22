@@ -3,10 +3,10 @@ r"""Create (or update) the Databricks replication job and run a small sample.
 Drives the proposed architecture end to end, from a laptop, through a real
 Databricks **job** whose tasks run this repo's notebooks on an existing cluster:
 
-    probe_env  ->  source_to_personal  ->  validate  ->  export_to_git
+    probe_env  ->  source_to_personal  ->  export_to_git
 
 `source_to_personal` copies the current source data into the personal schema as
-Delta; `validate` runs the automated flags on it; `export_to_git` writes it under `input_output/output_databricks/time_series_data/<series>.csv`
+Delta; `export_to_git` writes it under `input_output/output_databricks/time_series_data/<series>.csv`
 into the repo's Git-folder checkout and pushes it. Scoped to `--limit-series`
 (default 3) so the first run is cheap.
 
@@ -37,7 +37,7 @@ JOB_NAME_DEFAULT = "groundwater_source_replication_sample"
 
 def build_tasks(jobs, repo_path: str, cluster_id: str, *, branch: str, limit: int,
                 token_secret: str, out_catalog: str, out_schema: str):
-    """Four notebook tasks wired with task-value handoffs (transport, run_id)."""
+    """Three notebook tasks wired with task-value handoffs (transport, run_id)."""
     nb = lambda name, params: jobs.Task(  # noqa: E731
         task_key=name[0],
         existing_cluster_id=cluster_id,
@@ -54,12 +54,10 @@ def build_tasks(jobs, repo_path: str, cluster_id: str, *, branch: str, limit: in
         nb(("probe_env", [], "00_probe_env"), common_git),
         nb(("source_to_personal", ["probe_env"], "01_source_to_personal"),
            {"limit_series": str(limit), "run_id": ""}),
-        nb(("validate", ["source_to_personal"], "02_validate"),
-           {"run_id": "{{tasks.source_to_personal.values.run_id}}"}),
-        nb(("export_to_git", ["validate"], "03_export_to_git"),
+        nb(("export_to_git", ["source_to_personal"], "02_export_to_git"),
            {**common_git,
             "transport": "{{tasks.probe_env.values.transport}}",
-            "run_id": "{{tasks.validate.values.run_id}}"}),
+            "run_id": "{{tasks.source_to_personal.values.run_id}}"}),
     ]
 
 

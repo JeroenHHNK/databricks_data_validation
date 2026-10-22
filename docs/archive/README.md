@@ -25,7 +25,7 @@ missing, so they would not have run as-is.
 2. Repoint data discovery from the old `<vendor>/<origin>/<series>` layout to the new
    `input_output/output_databricks/time_series_data/` + `metadata/object_data.csv` (see the mapping notes
    in each doc).
-3. Write reviewed copies to `input_output/output_repository/`, which `04_validated_to_delta` consumes.
+3. Write reviewed copies to `input_output/output_repository/`, which `03_validated_to_delta` consumes.
 4. Reconcile the metadata schemas — the on-prem `OBJECT_DATA.csv` columns differ from what
-   `03_export_to_git` emits (see [DISCOVER_validation_data.md](DISCOVER_validation_data.md)).
+   `02_export_to_git` emits (see [DISCOVER_validation_data.md](DISCOVER_validation_data.md)).
 5. Migrate the existing 325 review CSVs so their curated verdicts are not lost.

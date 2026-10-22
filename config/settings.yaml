@@ -5,21 +5,24 @@
 # relies on; when you vendor in the on-prem `config/settings.yaml`, merge its
 # keys into this file rather than overwriting it.
 
-# --- Data pulled from the Databricks source (written by 03_export_to_git) ---
+# --- Data pulled from the Databricks source (written by 02_export_to_git) ---
 # Everything replicated from Databricks lives under input_output/output_databricks/.
 # Replaces the old input_data/ + convert-fugro/convert-wiertsema flow; git carries
 # it, the local IDE pulls it.
-#   time_series_data/<filename>.csv   (Time,head — raw, unflagged)
-#   validation_flags/<filename>.csv   (Time,v1..v4,rule_a,rule_b — flagged hours only; from 02_validate)
+#   time_series_data/<filename>.csv   (Time,head — raw hourly copy)
 #   metadata/object_data.csv          (one row per series; join on `filename`)
 databricks_output_dir: input_output/output_databricks
 time_series_dir: input_output/output_databricks/time_series_data
-validation_flags_dir: input_output/output_databricks/validation_flags
 metadata_file: input_output/output_databricks/metadata/object_data.csv
 
-# --- Local validation output (written back to Delta by 04_validated_to_delta) ---
-# The validation tooling reads output_databricks/ and writes the reviewed copies
-# here; 04 reads these and builds the validated Delta table. Frozen store schema.
+# --- Automated validation results (local_validation/validate.ipynb; gitignored) ---
+#   validated/<filename>.csv  (timestamp,raw_head,head,v1..v4,rule_a,rule_b)
+validated_dir: output_data/validated
+validation_summary_file: output_data/validation_summary.csv
+
+# --- Reviewed copies (written back to Delta by 03_validated_to_delta) ---
+# The manual review writes the verdicts here; 03 reads these and builds the
+# validated Delta table. Frozen store schema.
 repository_output_dir: input_output/output_repository
 
 # --- Ephemeral build artifacts (gitignored) ---
@@ -36,8 +39,7 @@ store:
   schema: [timestamp, raw_data, gecontroleerd, afgekeurd, note]
 
 # --- Automated flag layers (v1-v4), carried from the handover §5 ---
-# Applied in order by databricks_code/lib/validation.py (02_validate). Keep the
-# 02_validate widget defaults in sync with these.
+# Applied in order by local_validation/checks.py; read by local_validation/data_io.py.
 flags:
   # v1 bounds come per series from the metadata: filter bottom (eind_filter) and
   # top of well (bovenkant_peilbuis). A missing bound skips that side.

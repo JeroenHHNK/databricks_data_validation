@@ -5,6 +5,7 @@ description = "Groundwater timeseries validation: Databricks source copy -> git 
 authors = ["jvanruitenbeek <jmpvanruitenbeek@gmail.com>"]
 readme = "README.md"
 packages = [
+    { include = "local_validation" },
     { include = "dataval" },
     { include = "dashboard" },
     { include = "functions" },

@@ -1,7 +1,8 @@
 # Databricks side
 
-The notebooks and helpers that read the read-only source, replicate it per well, run the
-automated validation, and move it in and out of git. Read
+The notebooks and helpers that read the read-only source, replicate it per well, and move it
+in and out of git. Validation does **not** run here — it runs locally on the export
+(`../local_validation/validate.ipynb`). Read
 [`../docs/DATABRICKS_PERMISSIONS.md`](../docs/DATABRICKS_PERMISSIONS.md) first — the grants
 are asymmetric (read `gold_prd`, write only `waterkeringbeheer_prd`).
 
@@ -12,19 +13,15 @@ notebooks/
   00_probe_env.py          verify grants + git push + Volume write BEFORE a real run
   01_source_to_personal.py read source -> clean to hourly -> per-well Delta copy;
                            all meetreeks columns + hl_cs_objecten location match
-  02_validate.py           automated flags v1-v4 + autoflag rules A/B -> auto_validated_meting
-  03_export_to_git.py      Delta tables -> input_output/output_databricks/ CSVs -> write (or commit & push / Volume)
-  04_validated_to_delta.py input_output/output_repository/ CSVs -> validated_meting Delta table
+  02_export_to_git.py      Delta copy -> input_output/output_databricks/ CSVs -> write (or commit & push / Volume)
+  03_validated_to_delta.py input_output/output_repository/ CSVs -> validated_meting Delta table
 lib/
   source_read.py           SQL builders (incl. the cs_objecten match) + cleaning + naming bridge
-  validation.py            the v1-v4 / rule A/B checks and apply_autoflags (pure pandas)
   git_sync.py              push probe, commit/push, and the Volume fallback
-jobs/workflow_config.json  job: 00 -> 01 -> 02 -> 03
+jobs/workflow_config.json  job: 00 -> 01 -> 02
 ```
 
 `lib/` is imported flat (`sys.path.insert(0, ".../databricks_code/lib"); import source_read`).
-`02_validate` runs `validation.py` on the workers via `applyInPandas`; it registers the
-module with cloudpickle *by value* so the workers don't need the repo on their path.
 
 ## Tables written (all in `waterkeringbeheer_prd.jvanruitenbeek`)
 
@@ -32,9 +29,7 @@ module with cloudpickle *by value* so the workers don't need the repo on their p
 |---|---|---|
 | `source_copy_meetreeks` | `01` | one row per series: all `meetreeks` columns + `matched`, `match_key`, `cs_*`, coordinates |
 | `source_copy_meting` | `01` | hourly `meetreeks_id, vendor, timestamp, head` |
-| `auto_validated_meting` | `02` | hourly `raw_head, head, v1..v4, rule_a, rule_b` |
-| `auto_validation_summary` | `02` | per series: bounds used + count per check |
-| `validated_meting` | `04` | approved hours after human review |
+| `validated_meting` | `03` | approved hours after human review |
 
 ### The `hl_cs_objecten` match
 
@@ -61,13 +56,13 @@ continues.
 2. **Configure Git credentials** (Settings -> Linked accounts / Git integration) with a PAT
    that can push. Git-folder operations route through the Databricks control plane, so they
    are **not** subject to the cluster egress block that stops KNMI downloads.
-3. **Run `00_probe_env`** (optional). It checks grants + whether a push would work. `03`
+3. **Run `00_probe_env`** (optional). It checks grants + whether a push would work. `02`
    defaults to `transport=write` (write files, **push manually** from the Git-folder UI);
-   set `transport=git` only if you want `03` to auto-commit & push via the `git_token_secret` PAT.
+   set `transport=git` only if you want `02` to auto-commit & push via the `git_token_secret` PAT.
 
 ## The Volume bridge (fallback, when git push is unavailable from the job)
 
-If the push probe fails, `03_export_to_git` copies the generated tree to
+If the push probe fails, `02_export_to_git` copies the generated tree to
 `/Volumes/waterkeringbeheer_prd/misc_files/misc_files/pastas_pipeline/git_exchange/`.
 Then, on a machine that has both the Databricks CLI and a clone of this repo:
 
@@ -88,10 +83,9 @@ cluster cannot. It needs the `WRITE VOLUME` grant, which is **separate and uncon
 
 | Step | Notebook | Trigger |
 |---|---|---|
-| ① replicate + auto-validate | `00` -> `01` -> `02` -> `03` (the job) | on source update, or manually |
-| ② review | local Streamlit, then `git push` | human |
-| ③ load back | `04_validated_to_delta` | after the review is pushed & pulled |
+| ① replicate | `00` -> `01` -> `02` (the job) | on source update, or manually |
+| ② validate + review | local `validate.ipynb`, then Streamlit, then `git push` | human |
+| ③ load back | `03_validated_to_delta` | after the review is pushed & pulled |
 
 Start with `limit_series=1` on `01` for a first run, confirm the round trip, then set it to
-`0` (all series). Running the notebooks by hand works too — run them in number order; `02`
-picks up the `run_id` of the copy on its own.
+`0` (all series). Running the notebooks by hand works too — run them in number order.

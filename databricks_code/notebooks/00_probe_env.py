@@ -97,6 +97,6 @@ print(f"  volume   : {'OK' if vol_probe.ok else 'NO -> ' + vol_probe.detail}")
 print("=" * 60)
 if transport == "NONE":
     raise RuntimeError("Neither git push nor Volume write is available — resolve a grant "
-                       "before running 03_export_to_git.")
+                       "before running 02_export_to_git.")
 dbutils.jobs.taskValues.set(key="transport", value=transport)
 dbutils.notebook.exit(transport)
