@@ -77,7 +77,11 @@ def origin_of(sensor_meetlocatie_sleutel: str | None, code: str | None) -> str:
 
 
 def relative_csv_path(vendor: str, origin: str, series: str) -> str:
-    """`source_data/<vendor>/<origin>/<series>.csv`, forward-slashed for git."""
+    """Legacy nested path `<vendor>/<origin>/<series>.csv`, forward-slashed for git.
+
+    The current export (02) is flat under `output_databricks/time_series_data/`; this
+    helper is kept for the `03`/review layout until that is finalized.
+    """
     return f"{vendor}/{origin}/{series}.csv"
 
 

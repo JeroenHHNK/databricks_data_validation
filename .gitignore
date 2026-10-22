@@ -7,8 +7,8 @@ output_data/
 
 # Exceptions: the faithful source replication, the review state, and the
 # committed KNMI forcing are the things git IS meant to carry.
-!time_series_data/**/*.csv
-!metadata/**/*.csv
+!output_databricks/**/*.csv
+!output_repository/**/*.csv
 !validation_data/**/*.csv
 !DISCOVER_validation_data/**/*.csv
 !data/forcing/*.csv

@@ -5,17 +5,20 @@
 # relies on; when you vendor in the on-prem `config/settings.yaml`, merge its
 # keys into this file rather than overwriting it.
 
-# --- Where the validation tooling reads its raw per-sensor input ---
-# Replaces the old input_data/ + convert-fugro/convert-wiertsema flow. The
-# Databricks export job (02_export_to_git.py) writes a flat per-series CSV folder
-# plus one combined metadata table; git carries it, the local IDE pulls it.
-#   time_series_data/<series>.csv   (Time,head)
-#   metadata/object_data.csv        (one row per series; join on `filename`)
-time_series_dir: time_series_data
-metadata_file: metadata/object_data.csv
+# --- Data pulled from the Databricks source (written by 02_export_to_git) ---
+# Everything replicated from Databricks lives under output_databricks/. Replaces
+# the old input_data/ + convert-fugro/convert-wiertsema flow; git carries it, the
+# local IDE pulls it.
+#   output_databricks/time_series_data/<series>.csv   (Time,head)
+#   output_databricks/metadata/object_data.csv        (one row per series; join on `filename`)
+databricks_output_dir: output_databricks
+time_series_dir: output_databricks/time_series_data
+metadata_file: output_databricks/metadata/object_data.csv
 
-# --- Review state (git-tracked, frozen schema) ---
-validation_data_dir: validation_data
+# --- Local validation output (written back to Delta by 03_validated_to_delta) ---
+# The validation tooling reads output_databricks/ and writes the reviewed copies
+# here; 03 reads these and builds the validated Delta table. Frozen store schema.
+repository_output_dir: output_repository
 
 # --- Ephemeral build artifacts (gitignored) ---
 output_data_dir: output_data

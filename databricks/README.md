@@ -10,8 +10,8 @@ first — the grants are asymmetric (read `gold_prd`, write only `waterkeringbeh
 notebooks/
   00_probe_env.py          verify grants + git push + Volume write BEFORE a real run
   01_source_to_personal.py read source -> clean to hourly -> per-well Delta copy
-  02_export_to_git.py      Delta copy -> source_data/ CSVs -> commit & push (or Volume)
-  03_validated_to_delta.py validation_data/ CSVs -> validated_meting Delta table
+  02_export_to_git.py      Delta copy -> output_databricks/ CSVs -> write (or commit & push / Volume)
+  03_validated_to_delta.py output_repository/ CSVs -> validated_meting Delta table
 lib/
   source_read.py           SQL builders + cleaning + the vendor/origin/series naming bridge
   git_sync.py              push probe, commit/push, and the Volume fallback
@@ -29,8 +29,9 @@ jobs/workflow_config.json  job: 00 -> 01 -> 02
 2. **Configure Git credentials** (Settings -> Linked accounts / Git integration) with a PAT
    that can push. Git-folder operations route through the Databricks control plane, so they
    are **not** subject to the cluster egress block that stops KNMI downloads.
-3. **Run `00_probe_env`.** It prints `USE TRANSPORT: git` or `volume`. Pass that to
-   `02_export_to_git`'s `transport` widget (the job wires it automatically via task values).
+3. **Run `00_probe_env`** (optional). It checks grants + whether a push would work. `02`
+   defaults to `transport=write` (write files, **push manually** from the Git-folder UI);
+   set `transport=git` only if you want `02` to auto-commit & push via the `git_token_secret` PAT.
 
 ## The Volume bridge (fallback, when git push is unavailable from the job)
 
@@ -41,10 +42,10 @@ Then, on a machine that has both the Databricks CLI and a clone of this repo:
 ```bash
 # download the exported tree from the Volume into the local working copy
 databricks fs cp -r \
-  dbfs:/Volumes/waterkeringbeheer_prd/misc_files/misc_files/pastas_pipeline/git_exchange/source_data \
-  ./source_data
+  dbfs:/Volumes/waterkeringbeheer_prd/misc_files/misc_files/pastas_pipeline/git_exchange/output_databricks \
+  ./output_databricks
 
-git add source_data && git commit -m "source replication (via Volume bridge)" && git push
+git add output_databricks && git commit -m "source replication (via Volume bridge)" && git push
 ```
 
 This mirrors the pattern the KNMI forcing already uses: a laptop bridges git because the

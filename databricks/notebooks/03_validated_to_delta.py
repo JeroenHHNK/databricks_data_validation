@@ -1,14 +1,19 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # 03 · Validated data -> Delta table
-# MAGIC Closes the loop. After `validation_data/` has been pushed from the IDE and pulled
-# MAGIC into this Git folder, reads the review CSVs, keeps the approved readings, joins them
-# MAGIC back to the source copy on `meetreeks_id`, and writes a quality-checked Delta table
-# MAGIC for further analysis. The source is still never touched.
+# MAGIC Closes the loop. After the locally-validated copies in `output_repository/` have been
+# MAGIC pushed from the IDE and pulled into this Git folder, reads them, keeps the approved
+# MAGIC readings, joins them back to the source copy on `meetreeks_id`, and writes a
+# MAGIC quality-checked Delta table for further analysis. The source is still never touched.
 # MAGIC
 # MAGIC Output: `waterkeringbeheer_prd.jvanruitenbeek.validated_meting` (append, run-tagged).
 # MAGIC This table is a natural future source for the Tarso pipeline, which currently ignores
 # MAGIC `validatie_status`.
+# MAGIC
+# MAGIC > **PROVISIONAL.** The exact `output_repository/` layout (flat vs nested, and the join
+# MAGIC > key) is finalized when the local validation toolkit is wired in. The matching logic
+# MAGIC > below still assumes the old `<vendor>/<origin>/<series>.csv` shape and will be
+# MAGIC > realigned to the new metadata `filename` join then.
 
 # COMMAND ----------
 import os
@@ -29,7 +34,7 @@ ROOT = dbutils.widgets.get("repo_root").strip() or os.getcwd()
 sys.path.insert(0, os.path.join(ROOT, "databricks", "lib"))
 import source_read as sr  # noqa: E402
 
-VALIDATION_DATA = os.path.join(ROOT, "validation_data")
+VALIDATION_DATA = os.path.join(ROOT, "output_repository")
 
 # COMMAND ----------
 # Rebuild the name -> meetreeks_id map from the dimension.

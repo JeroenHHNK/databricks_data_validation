@@ -6,7 +6,7 @@ Databricks **job** whose tasks run this repo's notebooks on an existing cluster:
     probe_env  ->  source_to_personal  ->  export_to_git
 
 `source_to_personal` copies the current source data into the personal schema as
-Delta; `export_to_git` writes it as `source_data/<vendor>/<origin>/<series>.csv`
+Delta; `export_to_git` writes it under `output_databricks/time_series_data/<series>.csv`
 into the repo's Git-folder checkout and pushes it. Scoped to `--limit-series`
 (default 3) so the first run is cheap.
 
@@ -145,7 +145,7 @@ def main() -> int:
             pass
     print("\nDONE." if ok else "\nFINISHED WITH FAILURES — see task errors above.")
     if ok:
-        print("Now locally: `git pull` to land the sample under source_data/.")
+        print("Now locally: `git pull` to land the sample under output_databricks/.")
     return 0 if ok else 1
 
 

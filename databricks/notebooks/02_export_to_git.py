@@ -4,18 +4,19 @@
 # environment_version = "6"
 # ///
 # MAGIC %md
-# MAGIC # 02 · Export the copy -> time_series_data/ + metadata/
+# MAGIC # 02 · Export the copy -> output_databricks/
 # MAGIC Turns the personal-workspace Delta copy into a flat per-series CSV layout plus one
-# MAGIC combined metadata table, written into the Git folder working tree.
+# MAGIC combined metadata table, written into the Git folder working tree. Everything pulled
+# MAGIC from the Databricks source lives under `output_databricks/`.
 # MAGIC
 # MAGIC Layout (forward-slashed, git-tracked):
 # MAGIC ```
-# MAGIC time_series_data/<series>.csv     # Time,head  (hourly, gaps dropped); one file per series
-# MAGIC metadata/object_data.csv          # one row per series: filename, ids, vendor, filters, coords
+# MAGIC output_databricks/time_series_data/<series>.csv   # Time,head (hourly); one file per series
+# MAGIC output_databricks/metadata/object_data.csv        # one row per series: filename, ids, filters, coords
 # MAGIC ```
 # MAGIC Flat data + a single metadata CSV is easier to loop over than nested vendor/origin
-# MAGIC folders: read `metadata/object_data.csv`, and for each row open
-# MAGIC `time_series_data/<filename>.csv`.
+# MAGIC folders: read `output_databricks/metadata/object_data.csv`, and for each row open
+# MAGIC `output_databricks/time_series_data/<filename>.csv`.
 # MAGIC
 # MAGIC `transport` controls shipping:
 # MAGIC * **`write`** (default) — only write the files; **commit & push manually** from the
@@ -60,8 +61,9 @@ if LIB not in sys.path:
 import git_sync  # noqa: E402
 import source_read as sr  # noqa: E402
 
-TS_DIR = os.path.join(ROOT, "time_series_data")
-META_DIR = os.path.join(ROOT, "metadata")
+OUTPUT_DBX = os.path.join(ROOT, "output_databricks")
+TS_DIR = os.path.join(OUTPUT_DBX, "time_series_data")
+META_DIR = os.path.join(OUTPUT_DBX, "metadata")
 print("ROOT:", ROOT, "| transport:", TRANSPORT)
 
 # COMMAND ----------
@@ -117,7 +119,7 @@ def _flush(mid, rows):
     sn, meta = entry
     stem = _filename(sn)
     pd.DataFrame(rows, columns=["Time", "head"]).to_csv(os.path.join(TS_DIR, stem + ".csv"), index=False)
-    written_rel.append(f"time_series_data/{stem}.csv")
+    written_rel.append(f"output_databricks/time_series_data/{stem}.csv")
     meta_rows.append({
         "filename": stem, "meetreeks_id": mid, "vendor": sn.vendor, "origin": sn.origin,
         "series": sn.series, "code": meta.get("code"),
@@ -142,9 +144,10 @@ _flush(cur, buf)
 # One combined metadata table (sorted for a stable, reviewable diff).
 meta_df = pd.DataFrame(meta_rows).sort_values(["vendor", "origin", "series"]).reset_index(drop=True)
 meta_df.to_csv(os.path.join(META_DIR, "object_data.csv"), index=False)
-written_rel.append("metadata/object_data.csv")
+written_rel.append("output_databricks/metadata/object_data.csv")
 
-print(f"wrote {len(meta_rows)} series to time_series_data/ and metadata/object_data.csv "
+print(f"wrote {len(meta_rows)} series to output_databricks/time_series_data/ and "
+      f"output_databricks/metadata/object_data.csv "
       f"({missing} series in the copy without a dimension name)")
 
 # COMMAND ----------
@@ -163,16 +166,16 @@ def git_token():
 
 if TRANSPORT == "git":
     git_sync.commit_and_push(
-        ROOT, paths=["time_series_data", "metadata"],
+        ROOT, paths=["output_databricks"],
         message=f"source replication: run {RUN_ID} ({len(meta_rows)} series)",
         branch=BRANCH, token=git_token())
-    print("committed & pushed time_series_data/ + metadata/")
+    print("committed & pushed output_databricks/")
 elif TRANSPORT == "volume":
     dest = git_sync.write_tree_to_volume(ROOT, written_rel)
     print("copied to Volume for the local bridge:", dest)
     print("Now, on a machine with the Databricks CLI, run the bridge in databricks/README.md")
 else:  # "write" (default): leave the files in the working tree; push manually
-    print(f"{len(written_rel)} files written under time_series_data/ + metadata/.")
+    print(f"{len(written_rel)} files written under output_databricks/.")
     print("Nothing pushed. Commit & push from Databricks (Git folder UI) when ready.")
 
 dbutils.notebook.exit(str(len(meta_rows)))

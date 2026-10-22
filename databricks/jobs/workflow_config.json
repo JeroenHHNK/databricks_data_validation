@@ -1,6 +1,6 @@
 {
   "name": "groundwater_source_replication",
-  "description": "Self-contained Databricks job: pulls this repo from GitHub (git_source), copies the current source data into the personal schema, and pushes source_data/ CSVs back to the repo. Uses a Databricks-managed job cluster (no external cluster, no laptop driver). 03_validated_to_delta runs separately, after human review.",
+  "description": "Self-contained Databricks job: pulls this repo from GitHub (git_source), copies the current source data into the personal schema, and writes output_databricks/ CSVs back to the repo. Uses a Databricks-managed job cluster (no external cluster, no laptop driver). 03_validated_to_delta runs separately, after human review.",
   "tags": { "pipeline": "data_validation", "owner": "jvanruitenbeek" },
   "git_source": {
     "git_url": "https://github.com/JeroenHHNK/databricks_data_validation",
