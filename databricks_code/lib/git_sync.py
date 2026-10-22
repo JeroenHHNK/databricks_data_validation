@@ -14,7 +14,7 @@ Two transports, chosen at runtime by the probe:
 2. **Volume bridge** (fallback). When the probe fails, Databricks writes the files
    to the `misc_files` Volume and a local machine with the Databricks CLI/SDK
    pulls them down and commits/pushes. See `write_tree_to_volume()` and the
-   companion note in databricks/README.md.
+   companion note in databricks_code/README.md.
 
 Nothing here ever writes to `gold_prd`.
 """
@@ -102,7 +102,7 @@ def commit_and_push(repo_root: str, paths: list[str], message: str,
     if not is_git_worktree(repo_root):
         raise RuntimeError(
             f"{repo_root} is not a git worktree. Use write_tree_to_volume() + the "
-            "local CLI bridge instead (see databricks/README.md)."
+            "local CLI bridge instead (see databricks_code/README.md)."
         )
     add = _run(["git", "add", *paths], repo_root)
     if add.returncode != 0:
@@ -123,7 +123,7 @@ def write_tree_to_volume(local_root: str, rel_paths: list[str],
                          subdir: str = "git_exchange") -> str:
     """Fallback transport: copy generated files to the `misc_files` Volume,
     preserving their relative layout. A local machine then runs the companion
-    bridge (databricks/README.md) to commit & push them.
+    bridge (databricks_code/README.md) to commit & push them.
 
     Requires `WRITE VOLUME`, which is a **separate, unconfirmed grant**
     (DATABRICKS_PERMISSIONS.md §4). Probe it with `probe_volume_write()` first.

@@ -27,10 +27,10 @@ timestamp,raw_data,gecontroleerd,afgekeurd,note
 ```
 
 `gecontroleerd` = reviewed (0/1), `afgekeurd` = rejected (0/1). This is the frozen schema
-`timestamp, raw_data, gecontroleerd, afgekeurd, note`; `03_validated_to_delta` already reads
+`timestamp, raw_data, gecontroleerd, afgekeurd, note`; `04_validated_to_delta` already reads
 exactly this shape. Note `raw_data` can be empty (a reviewed-but-null reading).
 
-## `OBJECT_DATA.csv` — richer than what `02` currently emits ⚠️
+## `OBJECT_DATA.csv` — richer than what `03_export_to_git` emits ⚠️
 
 The on-prem per-origin `OBJECT_DATA.csv` columns are:
 
@@ -39,9 +39,11 @@ name_timeseries, bottom_filter, cross_sec_location, top_filter,
 n_sensor_files, source_files, is_nap, needs_review, review_reason, manually_edited
 ```
 
-Our generated `output_databricks/metadata/object_data.csv` instead has
-`filename, meetreeks_id, vendor, origin, series, code, begin_filter, eind_filter,
-bovenkant_peilbuis, peilgebied_code, lon, lat, n_rows`.
+Our generated `input_output/output_databricks/metadata/object_data.csv` instead has
+`filename, vendor, origin, series`, then every `source_copy_meetreeks` column (all of
+`meetreeks`, plus the `hl_cs_objecten.meetlocatie` match: `matched`, `match_key`,
+`cs_code`, `cs_naam`, `compartiment_naam`, `peilgebied_code`, `rd_x/rd_y`, `lon/lat`, …),
+then `n_rows` and the per-check flag counts `n_v1`..`n_v4`, `n_rule_a`, `n_rule_b`.
 
 **These must be reconciled** when the toolkit is wired in. Rough correspondence:
 
@@ -57,8 +59,8 @@ bovenkant_peilbuis, peilgebied_code, lon, lat, n_rows`.
 
 ## When we implement
 
-- **Migrate these verdicts** into `output_repository/` under whatever final layout is chosen
+- **Migrate these verdicts** into `input_output/output_repository/` under whatever final layout is chosen
   — do not regenerate from scratch. `migration_log.json` and
   `dashboard/validation_store.py::migrate_legacy_stores()` are the hooks for that.
-- Decide whether `output_repository/` keeps the `<vendor>/<origin>/` nesting or goes flat
-  (`filename`-keyed) to match `output_databricks/`.
+- Decide whether `input_output/output_repository/` keeps the `<vendor>/<origin>/` nesting or goes flat
+  (`filename`-keyed) to match `input_output/output_databricks/`.

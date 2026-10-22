@@ -60,7 +60,7 @@ equivalent of a home folder. Five tables:
 | Table | Written by | Mode | Grain |
 |---|---|---|---|
 | `pastas_series_verdict` | `exploration/explore_meting.py` *(by hand)* | `overwrite` | one row per source series, with a verdict |
-| `pastas_series_manifest` | `ingestion/build_manifest.py` **(task 1)** | `overwrite` | one row per selected series (20 longest) |
+| `pastas_series_manifest` | `ingestion/build_manifest.py` **(task 1)** | `overwrite` | one row per series spanning >= `min_days` |
 | `pastas_fit_metrics` | `transformation/fit_pastas_models.py` **(task 2)** | `append` | one row per series × model type × run |
 | `pastas_evt_selection` | `transformation/run_extremes.py` **(task 3)** | `append` | one row per model × tail |
 | `pastas_extremes_summary` | `transformation/run_extremes.py` **(task 3)** | `append` | one row per model |

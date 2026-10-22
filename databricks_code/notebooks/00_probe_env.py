@@ -51,7 +51,7 @@ def repo_root() -> str:
 
 
 ROOT = repo_root()
-sys.path.insert(0, os.path.join(ROOT, "databricks", "lib"))
+sys.path.insert(0, os.path.join(ROOT, "databricks_code", "lib"))
 import git_sync  # noqa: E402
 import source_read  # noqa: E402
 
@@ -97,6 +97,6 @@ print(f"  volume   : {'OK' if vol_probe.ok else 'NO -> ' + vol_probe.detail}")
 print("=" * 60)
 if transport == "NONE":
     raise RuntimeError("Neither git push nor Volume write is available — resolve a grant "
-                       "before running 02_export_to_git.")
+                       "before running 03_export_to_git.")
 dbutils.jobs.taskValues.set(key="transport", value=transport)
 dbutils.notebook.exit(transport)

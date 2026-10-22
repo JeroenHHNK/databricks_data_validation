@@ -29,8 +29,8 @@ if TYPE_CHECKING:  # pandas is only needed by the cleaning helpers, imported laz
 SOURCE_SCHEMA = "gold_prd.hl_grondwaterpeilmeting"
 METING = f"{SOURCE_SCHEMA}.meting"
 MEETREEKS = f"{SOURCE_SCHEMA}.meetreeks"
-# Optional enrichment (coordinates, water-level area). Join coverage is unproven
-# (DATABRICKS_layer_cs_objecten.md §2); treated as best-effort, never required.
+# Location registry (coordinates, name, compartment, water-level area). Join coverage
+# is partial (DATABRICKS_layer_cs_objecten.md §2): matched where possible, never required.
 MEETLOCATIE = "gold_prd.hl_cs_objecten.meetlocatie"
 
 # The time column. We index on the UTC twin to avoid the October DST fold, where
@@ -79,8 +79,8 @@ def origin_of(sensor_meetlocatie_sleutel: str | None, code: str | None) -> str:
 def relative_csv_path(vendor: str, origin: str, series: str) -> str:
     """Legacy nested path `<vendor>/<origin>/<series>.csv`, forward-slashed for git.
 
-    The current export (02) is flat under `output_databricks/time_series_data/`; this
-    helper is kept for the `03`/review layout until that is finalized.
+    The current export (03) is flat under `input_output/output_databricks/time_series_data/`;
+    this helper is kept for the nested review layout `04` still accepts.
     """
     return f"{vendor}/{origin}/{series}.csv"
 
@@ -111,43 +111,154 @@ def name_series(meetreeks_id: str, code: str | None, bronsysteem: str | None,
 
 
 # --- SQL builders (run on Spark) --------------------------------------------
+# Ways a meetreeks row can point at hl_cs_objecten.meetlocatie, tried in this order
+# (DATABRICKS_layer_cs_objecten.md §2). The first key that matches wins per series.
+# `object_id` is a guess: it points at the groundwater schema's own `object` table,
+# so it may match nothing — kept because it is cheap to test.
+CS_MATCH_KEYS: list[tuple[str, str]] = [
+    ("meetlocatie_object_id", "l.id = r.meetlocatie_object_id"),
+    ("meetlocatie_code",      "l.code = r.meetlocatie_code"),
+    ("trim_code",             "l.code = trim(r.code)"),
+    ("object_id",             "l.id = r.object_id"),
+]
+MATCHED = "matched"
+NOT_MATCHED = "no match found in cs_objecten"
+
+# The meetlocatie columns carried into the dimension. Staff names (gebiedsbeheerder_*,
+# objectbeheerder) are deliberately left out (§1, "Management and ownership").
+_CS_COLS = """
+    l.id                                AS cs_meetlocatie_id,
+    l.code                              AS cs_code,
+    l.naam                              AS cs_naam,
+    l.compartiment_code                 AS compartiment_code,
+    l.compartiment_naam                 AS compartiment_naam,
+    l.peilgebiedpraktijk_code           AS peilgebied_code,
+    l.meetreeks_actief                  AS meetreeks_actief,
+    CAST(l.rd_xcoordinaat AS double)    AS rd_x,
+    CAST(l.rd_ycoordinaat AS double)    AS rd_y,
+    CAST(l.wgs84_xcoordinaat AS double) AS lon,
+    CAST(l.wgs84_ycoordinaat AS double) AS lat"""
+_CS_NULLS = """
+    CAST(NULL AS string) AS cs_meetlocatie_id,
+    CAST(NULL AS string) AS cs_code,
+    CAST(NULL AS string) AS cs_naam,
+    CAST(NULL AS string) AS compartiment_code,
+    CAST(NULL AS string) AS compartiment_naam,
+    CAST(NULL AS string) AS peilgebied_code,
+    CAST(NULL AS string) AS meetreeks_actief,
+    CAST(NULL AS double) AS rd_x,
+    CAST(NULL AS double) AS rd_y,
+    CAST(NULL AS double) AS lon,
+    CAST(NULL AS double) AS lat"""
+_CS_OUT = ("cs_meetlocatie_id, cs_code, cs_naam, compartiment_code, compartiment_naam, "
+           "peilgebied_code, meetreeks_actief, rd_x, rd_y, lon, lat")
+
+# Series that actually carry measurements (the dimension is restricted to these).
+_SERIES_CTE = f"""
+    series AS (
+        SELECT * FROM {MEETREEKS}
+        WHERE id IN (SELECT DISTINCT {SERIES_KEY} FROM {METING})
+    )"""
+
+
 def series_catalog_sql(include_location: bool = True) -> str:
-    """One row per series: the dimension needed to name files and build
-    OBJECT_DATA. With `include_location`, left-joins `meetlocatie` for coordinates
-    and the water-level area; set it False to fall back to meetreeks-only when the
-    `hl_cs_objecten` grant is absent (DATABRICKS_layer_cs_objecten.md §6). The
-    column list is identical either way — the location columns come back NULL — so
-    downstream code never has to branch on which variant ran.
+    """One row per series: every `meetreeks` column plus its `hl_cs_objecten.meetlocatie`
+    match.
+
+    The `meetreeks` part: the documented columns first (trimmed code, filter depths cast
+    to double), then `r.* EXCEPT (...)` so any further source column comes along too.
+
+    The location part is a **LEFT** join, so unmatched series stay in. Each key in
+    `CS_MATCH_KEYS` is tried; the first one that hits wins (`match_key`), and if one key
+    finds several locations the lowest `cs_meetlocatie_id` is taken (`cs_n_candidates`
+    says how many there were). `matched` is `"matched"` or
+    `"no match found in cs_objecten"`.
+
+    With `include_location=False` (no `hl_cs_objecten` grant, §6) the column list is
+    identical with NULL locations and every series reads as not matched, so downstream
+    code never branches on which variant ran.
     """
-    if include_location:
-        loc_cols = """
-            l.peilgebiedpraktijk_code         AS peilgebied_code,
-            CAST(l.rd_xcoordinaat AS double)  AS rd_x,
-            CAST(l.rd_ycoordinaat AS double)  AS rd_y,
-            CAST(l.wgs84_xcoordinaat AS double) AS lon,
-            CAST(l.wgs84_ycoordinaat AS double) AS lat"""
-        loc_join = f"LEFT JOIN {MEETLOCATIE} l ON l.id = r.meetlocatie_object_id"
-    else:
-        loc_cols = """
-            CAST(NULL AS string) AS peilgebied_code,
-            CAST(NULL AS double) AS rd_x,
-            CAST(NULL AS double) AS rd_y,
-            CAST(NULL AS double) AS lon,
-            CAST(NULL AS double) AS lat"""
-        loc_join = ""
-    return f"""
-        SELECT
-            r.id                              AS meetreeks_id,
-            trim(r.code)                      AS code,
-            r.bronsysteem                     AS bronsysteem,
-            r.sensor_meetlocatie_sleutel      AS sensor_sleutel,
-            CAST(r.begin_filter AS double)    AS begin_filter,
-            CAST(r.eind_filter  AS double)    AS eind_filter,
+    meetreeks_cols = """
+            r.id                                 AS meetreeks_id,
+            trim(r.code)                         AS code,
+            r.bronsysteem                        AS bronsysteem,
+            r.sensor_meetlocatie_sleutel         AS sensor_sleutel,
+            CAST(r.begin_filter AS double)       AS begin_filter,
+            CAST(r.eind_filter  AS double)       AS eind_filter,
             CAST(r.bovenkant_peilbuis AS double) AS bovenkant_peilbuis,
-            r.eenheid                         AS eenheid,{loc_cols}
-        FROM {MEETREEKS} r
-        {loc_join}
-        WHERE r.id IN (SELECT DISTINCT {SERIES_KEY} FROM {METING})
+            r.* EXCEPT (id, code, bronsysteem, sensor_meetlocatie_sleutel,
+                        begin_filter, eind_filter, bovenkant_peilbuis)"""
+    if not include_location:
+        return f"""
+            WITH {_SERIES_CTE}
+            SELECT {meetreeks_cols},
+                   '{NOT_MATCHED}'      AS matched,
+                   CAST(NULL AS string) AS match_key,
+                   CAST(NULL AS int)    AS cs_n_candidates,{_CS_NULLS}
+            FROM series r
+        """
+    branches = "\n            UNION ALL\n".join(
+        f"""            SELECT r.id AS meetreeks_id, {prio} AS prio, '{name}' AS match_key,{_CS_COLS}
+            FROM series r JOIN {MEETLOCATIE} l ON {cond}"""
+        for prio, (name, cond) in enumerate(CS_MATCH_KEYS, start=1)
+    )
+    return f"""
+        WITH {_SERIES_CTE},
+        candidates AS (
+{branches}
+        ),
+        ranked AS (
+            SELECT *,
+                   row_number() OVER (PARTITION BY meetreeks_id ORDER BY prio, cs_meetlocatie_id) AS rn,
+                   count(*)     OVER (PARTITION BY meetreeks_id, prio)                          AS n_at_prio
+            FROM candidates
+        )
+        SELECT {meetreeks_cols},
+               CASE WHEN c.meetreeks_id IS NOT NULL THEN '{MATCHED}' ELSE '{NOT_MATCHED}' END AS matched,
+               c.match_key,
+               CAST(c.n_at_prio AS int) AS cs_n_candidates,
+               {", ".join("c." + col.strip() for col in _CS_OUT.split(","))}
+        FROM series r
+        LEFT JOIN ranked c ON c.meetreeks_id = r.id AND c.rn = 1
+    """
+
+
+def cs_match_report_sql() -> str:
+    """Diagnostic: for each key in `CS_MATCH_KEYS` on its own, how many of the series
+    with measurements find at least one `meetlocatie` row — plus how often the link
+    columns are filled in at all. One row per key."""
+    rows = "\n        UNION ALL\n".join(
+        f"""        SELECT {prio} AS prio, '{name}' AS match_key,
+               count(DISTINCT r.id) AS matched_series
+        FROM series r JOIN {MEETLOCATIE} l ON {cond}"""
+        for prio, (name, cond) in enumerate(CS_MATCH_KEYS, start=1)
+    )
+    return f"""
+        WITH {_SERIES_CTE},
+        per_key AS (
+{rows}
+        ),
+        fill AS (
+            SELECT count(*)                     AS series_total,
+                   count(meetlocatie_object_id) AS has_meetlocatie_object_id,
+                   count(meetlocatie_code)      AS has_meetlocatie_code,
+                   count(object_id)             AS has_object_id
+            FROM series
+        )
+        SELECT k.prio, k.match_key, k.matched_series, f.series_total,
+               round(100.0 * k.matched_series / f.series_total, 1) AS pct_matched,
+               f.has_meetlocatie_object_id, f.has_meetlocatie_code, f.has_object_id
+        FROM per_key k CROSS JOIN fill f
+        ORDER BY k.prio
+    """
+
+
+def meetlocatie_id_convention_sql() -> str:
+    """Is `meetlocatie.id` = sha256(code)? (§5) If so the code key is as good as the id."""
+    return f"""
+        SELECT count(*)                         AS meetlocaties,
+               count_if(sha2(code, 256) = id)   AS id_is_sha256_of_code
+        FROM {MEETLOCATIE}
     """
 
 

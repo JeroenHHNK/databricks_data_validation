@@ -10,8 +10,8 @@ and to sit beside `dataval/` and `functions/`.
 | Module | Lines | Public API | Purpose |
 |---|---|---|---|
 | `config.py` | 69 | `Settings`, `load_settings()` | Load `config/settings.yaml` with defaults. |
-| `data_access.py` | 74 | `SeriesRef`, `list_vendors()`, `list_origins()`, `list_series()` | Discover series on disk by **`<vendor>/<origin>/<series>`**. ⚠️ the main adaptation point — repoint to the new flat `output_databricks/` + metadata layout. |
-| `validation_store.py` | 180 | `empty_store()`, `ensure_columns()`, `normalize_raw()`, `merge_new_raw()`, `load()`, `save()`, `migrate_legacy_stores()`, `compute_stats()` | The persistence core. **Frozen schema** `timestamp, raw_data, gecontroleerd, afgekeurd, note`; rounds timestamps to `1h`; merge protects reviewed rows; atomic save (temp + replace). Keep untouched; point its output at `output_repository/`. |
+| `data_access.py` | 74 | `SeriesRef`, `list_vendors()`, `list_origins()`, `list_series()` | Discover series on disk by **`<vendor>/<origin>/<series>`**. ⚠️ the main adaptation point — repoint to the new flat `input_output/output_databricks/` + metadata layout. |
+| `validation_store.py` | 180 | `empty_store()`, `ensure_columns()`, `normalize_raw()`, `merge_new_raw()`, `load()`, `save()`, `migrate_legacy_stores()`, `compute_stats()` | The persistence core. **Frozen schema** `timestamp, raw_data, gecontroleerd, afgekeurd, note`; rounds timestamps to `1h`; merge protects reviewed rows; atomic save (temp + replace). Keep untouched; point its output at `input_output/output_repository/`. |
 | `plotting.py` | 158 | `status_series()`, `build_figure()` | Color-coded Plotly figure (gray=unreviewed, green=approved, red=rejected). |
 | `overview.py` | 117 | `collect_all_stats()`, `compute_folder_summary()`, `append_total_row()` | Aggregate review stats per vendor/origin. |
 | `autoflags.py` | 41 | `load_flag_hints()` | Load v2/v3/v4 flag hints from validated CSVs for the overlay. |
@@ -24,10 +24,10 @@ and to sit beside `dataval/` and `functions/`.
 ## Mapping to the new structure
 
 - **`data_access.py`** is the key change: today it walks `<vendor>/<origin>/<series>.csv`.
-  New input is flat `output_databricks/time_series_data/<series>.csv` keyed by the
-  `output_databricks/metadata/object_data.csv` row (`filename`), with `vendor`/`origin` now
+  New input is flat `input_output/output_databricks/time_series_data/<series>.csv` keyed by the
+  `input_output/output_databricks/metadata/object_data.csv` row (`filename`), with `vendor`/`origin` now
   metadata columns rather than folders.
 - **`validation_store.py`** stays byte-for-byte (frozen schema); only its target directory
-  moves to `output_repository/`.
+  moves to `input_output/output_repository/`.
 - **`generate_tab.py`** / `sensor_stitch.py` assume the old convert + `only_csv/` flow;
   revisit whether they are still needed once the source comes from Databricks.

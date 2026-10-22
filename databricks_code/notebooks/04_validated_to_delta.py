@@ -1,19 +1,23 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 03 · Validated data -> Delta table
-# MAGIC Closes the loop. After the locally-validated copies in `output_repository/` have been
-# MAGIC pushed from the IDE and pulled into this Git folder, reads them, keeps the approved
-# MAGIC readings, joins them back to the source copy on `meetreeks_id`, and writes a
+# MAGIC # 04 · Validated data -> Delta table
+# MAGIC Closes the loop. After the locally-validated copies in `input_output/output_repository/`
+# MAGIC have been pushed from the IDE and pulled into this Git folder, reads them, keeps the
+# MAGIC approved readings, joins them back to the source copy on `meetreeks_id`, and writes a
 # MAGIC quality-checked Delta table for further analysis. The source is still never touched.
 # MAGIC
 # MAGIC Output: `waterkeringbeheer_prd.jvanruitenbeek.validated_meting` (append, run-tagged).
 # MAGIC This table is a natural future source for the Tarso pipeline, which currently ignores
 # MAGIC `validatie_status`.
 # MAGIC
-# MAGIC > **PROVISIONAL.** The exact `output_repository/` layout (flat vs nested, and the join
-# MAGIC > key) is finalized when the local validation toolkit is wired in. The matching logic
-# MAGIC > below still assumes the old `<vendor>/<origin>/<series>.csv` shape and will be
-# MAGIC > realigned to the new metadata `filename` join then.
+# MAGIC Review files are matched to a series by name:
+# MAGIC * **flat** `output_repository/<filename>.csv` — `filename` from
+# MAGIC   `output_databricks/metadata/object_data.csv` (the layout the export uses), or
+# MAGIC * **nested** `output_repository/<vendor>/<origin>/<series>.csv` — the on-prem layout,
+# MAGIC   kept so migrated review work still loads.
+# MAGIC
+# MAGIC > **PROVISIONAL** until the local validation toolkit is wired in and fixes the final
+# MAGIC > `output_repository/` layout.
 
 # COMMAND ----------
 import os
@@ -31,37 +35,53 @@ KEEP_APPROVED = dbutils.widgets.get("keep_only_approved").lower() == "true"
 RUN_ID = dbutils.widgets.get("run_id").strip() or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 ROOT = dbutils.widgets.get("repo_root").strip() or os.getcwd()
-sys.path.insert(0, os.path.join(ROOT, "databricks", "lib"))
+while not os.path.isdir(os.path.join(ROOT, "databricks_code", "lib")):
+    parent = os.path.dirname(ROOT)
+    if parent == ROOT:
+        raise FileNotFoundError("Could not find databricks_code/lib above the notebook; set the repo_root widget.")
+    ROOT = parent
+sys.path.insert(0, os.path.join(ROOT, "databricks_code", "lib"))
 import source_read as sr  # noqa: E402
 
-VALIDATION_DATA = os.path.join(ROOT, "output_repository")
+VALIDATION_DATA = os.path.join(ROOT, "input_output", "output_repository")
+OBJECT_DATA = os.path.join(ROOT, "input_output", "output_databricks", "metadata", "object_data.csv")
 
 # COMMAND ----------
-# Rebuild the name -> meetreeks_id map from the dimension.
+# Name -> meetreeks_id maps: flat `filename` from object_data.csv, nested from the dimension.
+import pandas as pd  # noqa: E402
+
+file_to_id = {}
+if os.path.exists(OBJECT_DATA):
+    od = pd.read_csv(OBJECT_DATA, usecols=["filename", "meetreeks_id", "vendor"])
+    file_to_id = {r.filename: (r.meetreeks_id, r.vendor) for r in od.itertuples(index=False)}
+
 dim = spark.table(f"{OUT}.source_copy_meetreeks").toPandas()
 key_to_id = {}
 for _, r in dim.iterrows():
     sn = sr.name_series(r["meetreeks_id"], r.get("code"), r.get("bronsysteem"), r.get("sensor_sleutel"))
-    key_to_id[(sn.vendor, sn.origin, sn.series)] = r["meetreeks_id"]
+    key_to_id[(sn.vendor, sn.origin, sn.series)] = (r["meetreeks_id"], sn.vendor)
+print(f"{len(file_to_id)} flat names, {len(key_to_id)} nested names")
 
 # COMMAND ----------
 # Read review CSVs (utf-8-sig; all three verdict columns required).
-import pandas as pd  # noqa: E402
-
 REQUIRED = {"raw_data", "gecontroleerd", "afgekeurd"}
 frames, skipped = [], []
 for dirpath, _dirs, files in os.walk(VALIDATION_DATA):
     for fn in files:
-        if not fn.endswith(".csv") or fn == "OBJECT_DATA.csv":
+        if not fn.endswith(".csv") or fn.lower() == "object_data.csv":
             continue
         path = os.path.join(dirpath, fn)
         rel = os.path.relpath(path, VALIDATION_DATA).replace("\\", "/").split("/")
-        if len(rel) < 3:
-            skipped.append((path, "not <vendor>/<origin>/<series>.csv")); continue
-        vendor, origin, series = rel[0], rel[1], os.path.splitext(rel[-1])[0]
-        mid = key_to_id.get((vendor, origin, series))
-        if mid is None:
-            skipped.append((path, "no matching series in dimension")); continue
+        stem = os.path.splitext(rel[-1])[0]
+        if len(rel) == 1:
+            hit = file_to_id.get(stem)
+        elif len(rel) >= 3:
+            hit = key_to_id.get((rel[0], rel[1], stem))
+        else:
+            hit = None
+        if hit is None:
+            skipped.append((path, "no matching series")); continue
+        mid, vendor = hit
 
         df = pd.read_csv(path, encoding="utf-8-sig")
         df.columns = [c.strip().lower() for c in df.columns]

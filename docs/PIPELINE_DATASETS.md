@@ -48,7 +48,7 @@ and because §6 is still the only written description of several fit statistics.
 
 ```
 gold_prd.hl_grondwaterpeilmeting.meting
-  --manifest_sql--> pastas_series_manifest        (task 1, 20 longest series)
+  --manifest_sql--> pastas_series_manifest        (task 1, every series >= 365d)
       --series_rows_sql--> pandas --clean_head--> CleanedSeries
                                                       |
 data/forcing/knmi_forcing_249.csv --load_forcing--> 2 x pd.Series
@@ -315,7 +315,9 @@ From `ml.stats.summary()`, a DataFrame indexed by metric name with a single colu
 `notebooks/ingestion/build_manifest.py` (job task 1). Replaces §5.
 
 **`mode("overwrite")` + `overwriteSchema`** — it holds only the latest selection, never
-a history. Grain: **one row per selected series**, the 20 longest trainable ones.
+a history. Grain: **one row per selected series** -- every series whose valued span
+reaches `min_days` (365) and which has at least `min_obs` (100) values. The `limit`
+widget caps it for a smoke test (`0` = no cap, the default).
 
 | Column | Spark | Notes |
 |---|---|---|
@@ -342,7 +344,8 @@ cannot drift apart. **`mode("append")` + `mergeSchema`.**
 **Primary key: `(run_id, meetreeks_id, model_type)`** — logical only, Delta enforces
 nothing. `meetreeks_id` alone is not unique: each series is fitted with every type in
 `model_types` (default `tarso` **and** `recharge`), and every run appends a fresh
-generation of rows. Grain: **one row per series × model type × run**.
+generation of rows. Grain: **one row per series × model type × run** -- so an
+uncapped run over N manifest series writes `N × len(model_types)` rows.
 
 > ⚠️ Do not join this to `pastas_series_manifest` on `run_id`. The manifest is
 > overwritten so it holds one `run_id`, and the two stages build `run_id` by different
@@ -467,7 +470,7 @@ Replaces §8. These are the `dbutils.widgets` of task 2
 | `forcing_units` | `m` | `m` or `mm`. **Changes the gain parameters.** |
 | `warmup_days` | `3650` | Pastas warmup. |
 | `model_types` | `tarso,recharge` | Comma-separated. Drives the row multiplier. |
-| `limit_series` | `20` | How many manifest series to fit. **Set `1` for a first run.** |
+| `limit_series` | `0` | Cap on manifest series to fit; **`0` = the whole manifest**. **Set `1` for a first run.** Longest-first, so a cap is a prefix, not a sample. |
 | `run_folder` | *(blank)* | Blank = `run_yy_mm_dd`. Set it to stop two same-day runs overwriting artefacts. |
 | `dedup_method` | `mean` | How to collapse duplicate timestamps. |
 | `resample_rule` / `resample_method` | `D` / `mean` | |

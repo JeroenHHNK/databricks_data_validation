@@ -18,11 +18,14 @@ is pure pandas/numpy (no filesystem coupling) and is the part most directly reus
 
 ## Mapping to the new structure
 
-- **Reusable as-is:** `validation_functions.py` — it operates on DataFrames, not paths, so
-  it carries over unchanged. The v2/v3/v4 thresholds are mirrored in
-  [`config/settings.yaml`](../../config/settings.yaml) `flags:`.
+- **Ported:** the v1–v4 flag functions now live in
+  [`databricks_code/lib/validation.py`](../../databricks_code/lib/validation.py) with the same
+  `(df_in) -> (df_out, changed)` contract, plus the autoflag rules A/B and
+  `apply_autoflags()`. They run on the cluster in `02_validate`, and the local toolkit should
+  import them from there instead of re-vendoring `validation_functions.py`. Thresholds are
+  in [`config/settings.yaml`](../../config/settings.yaml) `flags:` / `autoflag:`.
 - **Check for duplication:** `remove_duplicate_and_fill_missing` vs
-  `databricks/lib/source_read.py::clean_head` — both round to the hour, dedup, and insert
+  `databricks_code/lib/source_read.py::clean_head` — both round to the hour, dedup, and insert
   NaN gaps. Decide which is authoritative so cleaning happens once.
 - **Pastas / return-period modules** (`load_model`, `simulate`, `return_periods`) belong to
   the modelling/extremes concern (the separate Tarso repo), not to validation — likely out

@@ -5,20 +5,22 @@
 # relies on; when you vendor in the on-prem `config/settings.yaml`, merge its
 # keys into this file rather than overwriting it.
 
-# --- Data pulled from the Databricks source (written by 02_export_to_git) ---
-# Everything replicated from Databricks lives under output_databricks/. Replaces
-# the old input_data/ + convert-fugro/convert-wiertsema flow; git carries it, the
-# local IDE pulls it.
-#   output_databricks/time_series_data/<series>.csv   (Time,head)
-#   output_databricks/metadata/object_data.csv        (one row per series; join on `filename`)
-databricks_output_dir: output_databricks
-time_series_dir: output_databricks/time_series_data
-metadata_file: output_databricks/metadata/object_data.csv
+# --- Data pulled from the Databricks source (written by 03_export_to_git) ---
+# Everything replicated from Databricks lives under input_output/output_databricks/.
+# Replaces the old input_data/ + convert-fugro/convert-wiertsema flow; git carries
+# it, the local IDE pulls it.
+#   time_series_data/<filename>.csv   (Time,head — raw, unflagged)
+#   validation_flags/<filename>.csv   (Time,v1..v4,rule_a,rule_b — flagged hours only; from 02_validate)
+#   metadata/object_data.csv          (one row per series; join on `filename`)
+databricks_output_dir: input_output/output_databricks
+time_series_dir: input_output/output_databricks/time_series_data
+validation_flags_dir: input_output/output_databricks/validation_flags
+metadata_file: input_output/output_databricks/metadata/object_data.csv
 
-# --- Local validation output (written back to Delta by 03_validated_to_delta) ---
+# --- Local validation output (written back to Delta by 04_validated_to_delta) ---
 # The validation tooling reads output_databricks/ and writes the reviewed copies
-# here; 03 reads these and builds the validated Delta table. Frozen store schema.
-repository_output_dir: output_repository
+# here; 04 reads these and builds the validated Delta table. Frozen store schema.
+repository_output_dir: input_output/output_repository
 
 # --- Ephemeral build artifacts (gitignored) ---
 output_data_dir: output_data
@@ -33,10 +35,21 @@ store:
   frequency: "1h"
   schema: [timestamp, raw_data, gecontroleerd, afgekeurd, note]
 
-# --- Automated flag thresholds (v2/v3/v4), carried from the handover §5 ---
+# --- Automated flag layers (v1-v4), carried from the handover §5 ---
+# Applied in order by databricks_code/lib/validation.py (02_validate). Keep the
+# 02_validate widget defaults in sync with these.
 flags:
+  # v1 bounds come per series from the metadata: filter bottom (eind_filter) and
+  # top of well (bovenkant_peilbuis). A missing bound skips that side.
   v2_max_up: 0.30 # m/h
   v2_max_down: -0.05 # m/h
-  v3_band: 0.15 # m above hmin
-  v3_min_run: 96 # steps
+  v3_band: 0.15 # m either side of eind_filter (inclusive); no eind_filter -> v3 skipped
+  v3_min_run: 1 # steps; 1 = flag every in-band hour, >1 = only runs this long
   v4_iqr_factor: 1.5
+
+# --- Autoflag rules (applied to the review store; manual review always wins) ---
+autoflag:
+  rule_a_drop: 0.10 # m in one hourly step
+  rule_a_apply: false # report-only: disagreed with human reviewers too often
+  rule_b_margin: 0.10 # m above the filter bottom
+  rule_b_apply: true
