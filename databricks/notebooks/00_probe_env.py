@@ -58,7 +58,7 @@ import source_read  # noqa: E402
 print("repo_root:", ROOT)
 
 # COMMAND ----------
-# MAGIC %md ### 1 · Source reads (read-only)
+# 1 · Source reads (read-only)
 print("current_catalog():", spark.sql("SELECT current_catalog()").first()[0],
       "  <- metastore name, NOT a usable catalog (use 3-part names)")
 n = spark.sql(f"SELECT count(*) FROM {SOURCE_TABLE}").first()[0]
@@ -66,7 +66,7 @@ print(f"{SOURCE_TABLE}: {n:,} rows reachable")
 display(spark.sql(f"SHOW GRANTS ON SCHEMA {source_read.SOURCE_SCHEMA}"))
 
 # COMMAND ----------
-# MAGIC %md ### 2 · Table writes to the personal schema (confirmed path)
+# 2 · Table writes to the personal schema (confirmed path)
 probe_tbl = f"{OUT_CATALOG}.{OUT_SCHEMA}.__probe_tbl"
 spark.sql(f"CREATE OR REPLACE TABLE {probe_tbl} AS SELECT 1 AS ok")
 assert spark.table(probe_tbl).first()[0] == 1
@@ -74,21 +74,21 @@ spark.sql(f"DROP TABLE {probe_tbl}")
 print(f"table write OK -> {OUT_CATALOG}.{OUT_SCHEMA}")
 
 # COMMAND ----------
-# MAGIC %md ### 3 · Open data-quality failures (check before trusting a run)
+# 3 · Open data-quality failures (check before trusting a run)
 display(spark.sql(source_read.dq_failures_sql()))
 
 # COMMAND ----------
-# MAGIC %md ### 4 · git push probe (control plane)
+# 4 · git push probe (control plane)
 git_probe = git_sync.probe_push(ROOT, branch=BRANCH, token=git_token())
 print(git_probe)
 
 # COMMAND ----------
-# MAGIC %md ### 5 · Volume write probe (fallback transport grant)
+# 5 · Volume write probe (fallback transport grant)
 vol_probe = git_sync.probe_volume_write()
 print(vol_probe)
 
 # COMMAND ----------
-# MAGIC %md ### Verdict
+# Verdict
 transport = "git" if git_probe.ok else ("volume" if vol_probe.ok else "NONE")
 print("=" * 60)
 print(f"USE TRANSPORT: {transport}")

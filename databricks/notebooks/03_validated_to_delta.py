@@ -32,7 +32,7 @@ import source_read as sr  # noqa: E402
 VALIDATION_DATA = os.path.join(ROOT, "validation_data")
 
 # COMMAND ----------
-# MAGIC %md ### Rebuild the name -> meetreeks_id map from the dimension
+# Rebuild the name -> meetreeks_id map from the dimension.
 dim = spark.table(f"{OUT}.source_copy_meetreeks").toPandas()
 key_to_id = {}
 for _, r in dim.iterrows():
@@ -40,7 +40,7 @@ for _, r in dim.iterrows():
     key_to_id[(sn.vendor, sn.origin, sn.series)] = r["meetreeks_id"]
 
 # COMMAND ----------
-# MAGIC %md ### Read review CSVs (utf-8-sig; all three verdict columns required)
+# Read review CSVs (utf-8-sig; all three verdict columns required).
 import pandas as pd  # noqa: E402
 
 REQUIRED = {"raw_data", "gecontroleerd", "afgekeurd"}
@@ -81,7 +81,7 @@ for p, why in skipped[:20]:
     print("  skip:", why, "->", p)
 
 # COMMAND ----------
-# MAGIC %md ### Write validated_meting (append, run-tagged)
+# Write validated_meting (append, run-tagged).
 if not frames:
     dbutils.notebook.exit("0")
 validated = pd.concat(frames, ignore_index=True)

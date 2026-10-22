@@ -38,7 +38,7 @@ SOURCE_DATA = os.path.join(ROOT, "source_data")
 print("writing to:", SOURCE_DATA, "| transport:", TRANSPORT)
 
 # COMMAND ----------
-# MAGIC %md ### Resolve names from the dimension
+# Resolve names from the dimension.
 # One row per series with its vendor/origin/series tokens and metadata for OBJECT_DATA.
 dim = spark.table(f"{OUT}.source_copy_meetreeks").toPandas()
 names = {}
@@ -48,7 +48,7 @@ for _, r in dim.iterrows():
 print(len(names), "series to export")
 
 # COMMAND ----------
-# MAGIC %md ### Write per-series only_csv files + per-origin OBJECT_DATA.csv
+# Write per-series only_csv files + per-origin OBJECT_DATA.csv.
 import pandas as pd  # noqa: E402
 
 copy = spark.table(f"{OUT}.source_copy_meting")
@@ -86,7 +86,7 @@ for (vendor, origin), rows in object_rows.items():
 print(f"wrote {len(written)} files under source_data/")
 
 # COMMAND ----------
-# MAGIC %md ### Ship it
+# Ship it.
 def git_token():
     spec = dbutils.widgets.get("git_token_secret").strip()
     if not spec or "/" not in spec:
