@@ -67,7 +67,7 @@
         "base_parameters": {
           "output_catalog": "{{job.parameters.output_catalog}}",
           "output_schema": "{{job.parameters.output_schema}}",
-          "transport": "{{tasks.probe_env.values.transport}}",
+          "transport": "write",
           "branch": "{{job.parameters.branch}}",
           "git_token_secret": "{{job.parameters.git_token_secret}}",
           "run_id": "{{tasks.source_to_personal.values.run_id}}"

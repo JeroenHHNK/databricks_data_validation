@@ -1,16 +1,19 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 02 · Export the copy -> git
+# MAGIC # 02 · Export the copy -> source_data/
 # MAGIC Turns the personal-workspace Delta copy into the `source_data/` CSV layout the
-# MAGIC validation toolkit reads, writes it into the Git folder working tree, and pushes.
+# MAGIC validation toolkit reads, writing it into the Git folder working tree.
 # MAGIC
 # MAGIC Layout (forward-slashed, git-tracked):
 # MAGIC ```
 # MAGIC source_data/<vendor>/<origin>/<series>.csv     # Time,head  (hourly, gaps dropped)
 # MAGIC source_data/<vendor>/<origin>/OBJECT_DATA.csv   # filter depths + cross-section per series
 # MAGIC ```
-# MAGIC Transport is whatever `00_probe_env` returned: `git` (commit+push) or `volume`
-# MAGIC (copy to the misc_files Volume for the local CLI bridge to pick up).
+# MAGIC `transport` controls shipping:
+# MAGIC * **`write`** (default) — only write the files; **commit & push manually** from the
+# MAGIC   Databricks Git-folder UI. Needs no shell `git`, so it also runs on serverless.
+# MAGIC * `git` — also commit & push automatically (uses the `git_token_secret` PAT).
+# MAGIC * `volume` — copy to the misc_files Volume for the local CLI bridge.
 
 # COMMAND ----------
 import os
@@ -18,7 +21,7 @@ import sys
 
 dbutils.widgets.text("output_catalog", "waterkeringbeheer_prd")
 dbutils.widgets.text("output_schema", "jvanruitenbeek")
-dbutils.widgets.text("transport", "git")        # git | volume (from 00_probe_env)
+dbutils.widgets.text("transport", "write")       # write (default, no push) | git | volume
 dbutils.widgets.text("branch", "main")
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("repo_root", "")
@@ -128,9 +131,12 @@ if TRANSPORT == "git":
         message=f"source replication: run {RUN_ID} ({len(names)} series)",
         branch=BRANCH, token=git_token())
     print("committed & pushed source_data/")
-else:
+elif TRANSPORT == "volume":
     dest = git_sync.write_tree_to_volume(ROOT, written)
     print("copied to Volume for the local bridge:", dest)
     print("Now, on a machine with the Databricks CLI, run the bridge in databricks/README.md")
+else:  # "write" (default): leave the files in the working tree; push manually
+    print(f"{len(written)} files written to the Git folder working tree under source_data/.")
+    print("Nothing pushed. Commit & push from Databricks (Git folder UI) when ready.")
 
 dbutils.notebook.exit(str(len(written)))
