@@ -1,0 +1,3 @@
+series,meetreeks_id,code,begin_filter,eind_filter,bovenkant_peilbuis,peilgebied_code,lon,lat
+MSLV8_p67753,0a01619310ccb9ed5f91dc7929fb9f77792cfc40fb907110015f4b978dd22d87,MSLV8_p67753,-6.0,-7.0,5.3,,5.28260816,52.74107368
+MSLV8_p67774,649a05b417cbcb858e0be3d3ccd9f193f22dc2dcf6359eaa0379edc606091ac1,MSLV8_p67774,0.0,-1.0,5.4,,5.28260816,52.74107368

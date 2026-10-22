@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # 02 · Export the copy -> source_data/
 # MAGIC Turns the personal-workspace Delta copy into the `source_data/` CSV layout the
@@ -16,6 +20,27 @@
 # MAGIC * `volume` — copy to the misc_files Volume for the local CLI bridge.
 
 # COMMAND ----------
+
+print("ROOT:", ROOT)
+print("lib dir:", os.path.join(ROOT, "databricks", "lib"))
+print("exists:", os.path.isdir(os.path.join(ROOT, "databricks", "lib")))
+print(os.listdir(os.path.join(ROOT, "databricks", "lib")) if os.path.isdir(os.path.join(ROOT, "databricks", "lib")) else "missing")
+
+# COMMAND ----------
+
+nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+# e.g. /Workspace/Users/you/repo/notebooks/transformation/run_x  -> walk up to the repo root
+ROOT = dbutils.widgets.get("repo_root").strip()
+if not ROOT:
+    p = "/Workspace" + nb_path if not nb_path.startswith("/Workspace") else nb_path
+    while p and not os.path.isdir(os.path.join(p, "databricks", "lib")):
+        p = os.path.dirname(p)
+        if p in ("", "/"):
+            raise FileNotFoundError("Could not find databricks/lib above the notebook; set the repo_root widget.")
+    ROOT = p
+
+# COMMAND ----------
+
 import os
 import sys
 
@@ -32,15 +57,30 @@ TRANSPORT = dbutils.widgets.get("transport")
 BRANCH = dbutils.widgets.get("branch")
 RUN_ID = dbutils.widgets.get("run_id").strip() or "manual"
 
-ROOT = dbutils.widgets.get("repo_root").strip() or os.getcwd()
-sys.path.insert(0, os.path.join(ROOT, "databricks", "lib"))
+# Repo root: widget if set, otherwise walk up from the notebook until databricks/lib is found
+ROOT = dbutils.widgets.get("repo_root").strip()
+if not ROOT:
+    nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    p = nb_path if nb_path.startswith("/Workspace") else "/Workspace" + nb_path
+    while not os.path.isdir(os.path.join(p, "databricks", "lib")):
+        parent = os.path.dirname(p)
+        if parent == p or parent in ("", "/"):
+            raise FileNotFoundError("Could not find databricks/lib above the notebook; set the repo_root widget.")
+        p = parent
+    ROOT = p
+
+LIB = os.path.join(ROOT, "databricks", "lib")
+if LIB not in sys.path:
+    sys.path.insert(0, LIB)
 import git_sync  # noqa: E402
 import source_read as sr  # noqa: E402
 
 SOURCE_DATA = os.path.join(ROOT, "source_data")
+print("ROOT:", ROOT)
 print("writing to:", SOURCE_DATA, "| transport:", TRANSPORT)
 
 # COMMAND ----------
+
 # Resolve names from the dimension.
 # One row per series with its vendor/origin/series tokens and metadata for OBJECT_DATA.
 dim = spark.table(f"{OUT}.source_copy_meetreeks").toPandas()
@@ -51,6 +91,7 @@ for _, r in dim.iterrows():
 print(len(names), "series to export")
 
 # COMMAND ----------
+
 # Write per-series only_csv files + per-origin OBJECT_DATA.csv.
 # ONE global-sorted pass over source_copy_meting (not one query per series): rows
 # arrive grouped by meetreeks_id, so we buffer a single series at a time and flush
@@ -112,6 +153,7 @@ print(f"wrote {len(written)} files under source_data/ "
       f"({len(object_rows)} OBJECT_DATA.csv, {missing} series without a dimension name)")
 
 # COMMAND ----------
+
 # Ship it.
 def git_token():
     spec = dbutils.widgets.get("git_token_secret").strip()
