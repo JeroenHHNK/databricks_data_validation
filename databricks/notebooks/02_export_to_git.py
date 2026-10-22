@@ -49,32 +49,54 @@ print(len(names), "series to export")
 
 # COMMAND ----------
 # Write per-series only_csv files + per-origin OBJECT_DATA.csv.
+# ONE global-sorted pass over source_copy_meting (not one query per series): rows
+# arrive grouped by meetreeks_id, so we buffer a single series at a time and flush
+# it to <vendor>/<origin>/<series>.csv. The table is partitioned by vendor, so a
+# per-series .where() can't prune and would rescan millions of rows 693 times;
+# this scans once and keeps driver memory bounded to one series.
 import pandas as pd  # noqa: E402
 
-copy = spark.table(f"{OUT}.source_copy_meting")
+ordered = (spark.table(f"{OUT}.source_copy_meting")
+                .select("meetreeks_id", "timestamp", "head")
+                .orderBy("meetreeks_id", "timestamp"))
+
 written = []
 object_rows: dict[tuple[str, str], list[dict]] = {}
+missing = 0
 
-for mid, (sn, meta) in names.items():
-    pdf = (copy.where(copy.meetreeks_id == mid)
-               .select("timestamp", "head").orderBy("timestamp").toPandas())
-    if pdf.empty:
-        continue
-    pdf = pdf.dropna(subset=["head"]).rename(columns={"timestamp": "Time", "head": "head"})
+
+def _flush(mid, rows):
+    global missing
+    if not rows:
+        return
+    entry = names.get(mid)
+    if entry is None:            # series in the copy but not in the dimension
+        missing += 1
+        return
+    sn, meta = entry
     rel = sn.rel_csv
     dst = os.path.join(SOURCE_DATA, *rel.split("/"))
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    pdf.to_csv(dst, index=False)
+    pd.DataFrame(rows, columns=["Time", "head"]).to_csv(dst, index=False)
     written.append(os.path.join("source_data", *rel.split("/")))
-
-    key = (sn.vendor, sn.origin)
-    object_rows.setdefault(key, []).append({
+    object_rows.setdefault((sn.vendor, sn.origin), []).append({
         "series": sn.series, "meetreeks_id": mid, "code": meta.get("code"),
         "begin_filter": meta.get("begin_filter"), "eind_filter": meta.get("eind_filter"),
         "bovenkant_peilbuis": meta.get("bovenkant_peilbuis"),
         "peilgebied_code": meta.get("peilgebied_code"),
         "lon": meta.get("lon"), "lat": meta.get("lat"),
     })
+
+
+cur, buf = None, []
+for row in ordered.toLocalIterator():
+    mid = row["meetreeks_id"]
+    if mid != cur:
+        _flush(cur, buf)
+        cur, buf = mid, []
+    if row["head"] is not None:
+        buf.append((row["timestamp"], row["head"]))
+_flush(cur, buf)
 
 for (vendor, origin), rows in object_rows.items():
     rel = f"{vendor}/{origin}/OBJECT_DATA.csv"
@@ -83,7 +105,8 @@ for (vendor, origin), rows in object_rows.items():
     pd.DataFrame(rows).to_csv(dst, index=False)
     written.append(os.path.join("source_data", *rel.split("/")))
 
-print(f"wrote {len(written)} files under source_data/")
+print(f"wrote {len(written)} files under source_data/ "
+      f"({len(object_rows)} OBJECT_DATA.csv, {missing} series without a dimension name)")
 
 # COMMAND ----------
 # Ship it.
