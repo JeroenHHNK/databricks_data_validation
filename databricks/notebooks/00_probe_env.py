@@ -19,11 +19,24 @@ dbutils.widgets.text("output_catalog", "waterkeringbeheer_prd")
 dbutils.widgets.text("output_schema", "jvanruitenbeek")
 dbutils.widgets.text("repo_root", "")  # blank = walk up for pyproject.toml
 dbutils.widgets.text("branch", "main")
+dbutils.widgets.text("git_token_secret", "")  # "scope/key" of a PAT for push; blank = origin creds
 
 SOURCE_TABLE = dbutils.widgets.get("source_table")
 OUT_CATALOG = dbutils.widgets.get("output_catalog")
 OUT_SCHEMA = dbutils.widgets.get("output_schema")
 BRANCH = dbutils.widgets.get("branch")
+
+
+def git_token():
+    spec = dbutils.widgets.get("git_token_secret").strip()
+    if not spec or "/" not in spec:
+        return None
+    scope, key = spec.split("/", 1)
+    try:
+        return dbutils.secrets.get(scope, key)
+    except Exception as exc:  # noqa: BLE001
+        print(f"warn: could not read secret {spec}: {exc}")
+        return None
 
 
 def repo_root() -> str:
@@ -66,7 +79,7 @@ display(spark.sql(source_read.dq_failures_sql()))
 
 # COMMAND ----------
 # MAGIC %md ### 4 · git push probe (control plane)
-git_probe = git_sync.probe_push(ROOT, branch=BRANCH)
+git_probe = git_sync.probe_push(ROOT, branch=BRANCH, token=git_token())
 print(git_probe)
 
 # COMMAND ----------

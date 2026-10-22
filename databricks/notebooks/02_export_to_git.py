@@ -22,6 +22,7 @@ dbutils.widgets.text("transport", "git")        # git | volume (from 00_probe_en
 dbutils.widgets.text("branch", "main")
 dbutils.widgets.text("run_id", "")
 dbutils.widgets.text("repo_root", "")
+dbutils.widgets.text("git_token_secret", "")     # "scope/key" of a PAT for push
 
 OUT = f'{dbutils.widgets.get("output_catalog")}.{dbutils.widgets.get("output_schema")}'
 TRANSPORT = dbutils.widgets.get("transport")
@@ -86,10 +87,23 @@ print(f"wrote {len(written)} files under source_data/")
 
 # COMMAND ----------
 # MAGIC %md ### Ship it
+def git_token():
+    spec = dbutils.widgets.get("git_token_secret").strip()
+    if not spec or "/" not in spec:
+        return None
+    scope, key = spec.split("/", 1)
+    try:
+        return dbutils.secrets.get(scope, key)
+    except Exception as exc:  # noqa: BLE001
+        print(f"warn: could not read secret {spec}: {exc}")
+        return None
+
+
 if TRANSPORT == "git":
     git_sync.commit_and_push(
         ROOT, paths=["source_data"],
-        message=f"source replication: run {RUN_ID} ({len(names)} series)", branch=BRANCH)
+        message=f"source replication: run {RUN_ID} ({len(names)} series)",
+        branch=BRANCH, token=git_token())
     print("committed & pushed source_data/")
 else:
     dest = git_sync.write_tree_to_volume(ROOT, written)

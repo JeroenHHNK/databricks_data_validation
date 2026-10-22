@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import pandas as pd
+if TYPE_CHECKING:  # pandas is only needed by the cleaning helpers, imported lazily
+    import pandas as pd
 
 # --- Source (read-only) -----------------------------------------------------
 SOURCE_SCHEMA = "gold_prd.hl_grondwaterpeilmeting"
@@ -187,6 +189,8 @@ def clean_head(rows: pd.DataFrame, *, freq: str = "1h", dedup_method: str = "mea
     reindex onto a continuous hourly grid so gaps are explicit NaNs. The source
     is never mutated — a new frame is returned.
     """
+    import pandas as pd
+
     n_raw_rows = len(rows)
     s = rows[[time_col, value_col]].copy()
     s[time_col] = pd.to_datetime(s[time_col])
@@ -221,6 +225,8 @@ def head_to_only_csv(cleaned: CleanedSeries) -> pd.DataFrame:
     """Shape a cleaned series as the toolkit's raw per-sensor `only_csv` file:
     two columns `Time,head`, gap rows dropped (raw export carries no NaN rows).
     """
+    import pandas as pd  # noqa: F401  (kept explicit for parity / future use)
+
     df = cleaned.head.dropna().reset_index()
     df.columns = ["Time", "head"]
     return df

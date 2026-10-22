@@ -46,7 +46,37 @@ def is_git_worktree(repo_root: str) -> bool:
     return r.returncode == 0 and r.stdout.strip() == "true"
 
 
-def probe_push(repo_root: str, branch: str = "main") -> ProbeResult:
+def _origin_url(repo_root: str) -> str:
+    return _run(["git", "remote", "get-url", "origin"], repo_root).stdout.strip()
+
+
+def _authenticated_url(origin_url: str, token: str) -> str:
+    """Inject a PAT into an https origin so the driver can push without relying on
+    the workspace Git-credential plumbing. SSH or blank origins are returned as-is.
+    The token is never written to git config — it only ever lives in the argv of a
+    single `git push <url>` call.
+    """
+    if token and origin_url.startswith("https://"):
+        host_and_path = origin_url[len("https://"):].split("@")[-1]
+        return f"https://x-access-token:{token}@{host_and_path}"
+    return origin_url
+
+
+def _redact(text: str, token: str | None) -> str:
+    out = (text or "").strip()[:400]
+    if token:
+        out = out.replace(token, "***").replace("x-access-token:***@", "")
+    return out
+
+
+def _push(repo_root: str, branch: str, token: str | None) -> subprocess.CompletedProcess:
+    if token:
+        url = _authenticated_url(_origin_url(repo_root), token)
+        return _run(["git", "push", url, f"HEAD:{branch}"], repo_root)
+    return _run(["git", "push", "origin", branch], repo_root)
+
+
+def probe_push(repo_root: str, branch: str = "main", token: str | None = None) -> ProbeResult:
     """Prove a round-trip push works, cheaply. Commits a throwaway marker under
     `.probe/` and pushes it, then leaves it (harmless, gitignorable). Returns the
     transport to use. A failure costs seconds, not a whole run.
@@ -58,22 +88,24 @@ def probe_push(repo_root: str, branch: str = "main") -> ProbeResult:
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text("push probe\n", encoding="utf-8")
     for cmd in (["git", "add", str(marker)],
-                ["git", "commit", "-m", "probe: verify control-plane push"],
-                ["git", "push", "origin", branch]):
+                ["git", "commit", "-m", "probe: verify push from job"]):
         r = _run(cmd, repo_root)
         if r.returncode != 0 and "nothing to commit" not in (r.stdout + r.stderr):
-            return ProbeResult(False, "volume",
-                               f"`{' '.join(cmd)}` failed: {(r.stderr or r.stdout).strip()[:400]}")
-    return ProbeResult(True, "git", "Control-plane push works.")
+            return ProbeResult(False, "volume", f"`{' '.join(cmd)}`: {_redact(r.stderr or r.stdout, token)}")
+    push = _push(repo_root, branch, token)
+    if push.returncode != 0:
+        return ProbeResult(False, "volume", f"git push: {_redact(push.stderr or push.stdout, token)}")
+    return ProbeResult(True, "git", "Push from job works.")
 
 
 def commit_and_push(repo_root: str, paths: list[str], message: str,
-                    branch: str = "main") -> None:
+                    branch: str = "main", token: str | None = None) -> None:
     """Stage `paths`, commit, and push from the Git folder working tree.
 
-    Raises with a clear message if the push leg fails, pointing at the Volume
-    fallback. Staging only the given paths keeps the commit scoped to this run's
-    exports and never sweeps in unrelated working-tree changes.
+    When `token` is given, pushes to a PAT-authenticated remote URL (robust from a
+    Databricks driver); otherwise relies on `origin`'s configured credentials.
+    Raises with a redacted message if the push leg fails, pointing at the Volume
+    fallback. Staging only the given paths keeps the commit scoped to this run.
     """
     if not is_git_worktree(repo_root):
         raise RuntimeError(
@@ -86,11 +118,11 @@ def commit_and_push(repo_root: str, paths: list[str], message: str,
     commit = _run(["git", "commit", "-m", message], repo_root)
     if commit.returncode != 0 and "nothing to commit" not in (commit.stdout + commit.stderr):
         raise RuntimeError(f"git commit failed: {commit.stderr.strip() or commit.stdout.strip()}")
-    push = _run(["git", "push", "origin", branch], repo_root)
+    push = _push(repo_root, branch, token)
     if push.returncode != 0:
         raise RuntimeError(
-            "git push failed — the control-plane push leg is not available from this "
-            f"job. Fall back to the Volume bridge. Detail: {push.stderr.strip()[:400]}"
+            "git push failed — the push leg is not available from this job. Fall back to "
+            f"the Volume bridge. Detail: {_redact(push.stderr or push.stdout, token)}"
         )
 
 
