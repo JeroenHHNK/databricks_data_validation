@@ -25,7 +25,6 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
 
 VOLUME_BASE = "/Volumes/waterkeringbeheer_prd/misc_files/misc_files/pastas_pipeline"
 
@@ -77,25 +76,18 @@ def _push(repo_root: str, branch: str, token: str | None) -> subprocess.Complete
 
 
 def probe_push(repo_root: str, branch: str = "main", token: str | None = None) -> ProbeResult:
-    """Prove a round-trip push works, cheaply. Commits a throwaway marker under
-    `.probe/` and pushes it, then leaves it (harmless, gitignorable). Returns the
-    transport to use. A failure costs seconds, not a whole run.
+    """Prove a push works, cheaply and without polluting the repo. A no-op
+    `git push HEAD:<branch>` returns "up to date" when there is nothing to send,
+    so it verifies the remote is reachable and the credentials work without
+    creating a commit. A failure costs seconds, not a whole run.
     """
     if not is_git_worktree(repo_root):
         return ProbeResult(False, "volume",
                            "Not a git worktree; add the repo as a Git folder or use the Volume bridge.")
-    marker = Path(repo_root) / ".probe" / "push_probe.txt"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("push probe\n", encoding="utf-8")
-    for cmd in (["git", "add", str(marker)],
-                ["git", "commit", "-m", "probe: verify push from job"]):
-        r = _run(cmd, repo_root)
-        if r.returncode != 0 and "nothing to commit" not in (r.stdout + r.stderr):
-            return ProbeResult(False, "volume", f"`{' '.join(cmd)}`: {_redact(r.stderr or r.stdout, token)}")
     push = _push(repo_root, branch, token)
     if push.returncode != 0:
         return ProbeResult(False, "volume", f"git push: {_redact(push.stderr or push.stdout, token)}")
-    return ProbeResult(True, "git", "Push from job works.")
+    return ProbeResult(True, "git", "Push from job works (remote reachable, auth OK).")
 
 
 def commit_and_push(repo_root: str, paths: list[str], message: str,
