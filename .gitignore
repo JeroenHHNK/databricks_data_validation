@@ -10,7 +10,6 @@ output_data/
 !output_databricks/**/*.csv
 !output_repository/**/*.csv
 !validation_data/**/*.csv
-!DISCOVER_validation_data/**/*.csv
 !data/forcing/*.csv
 !tests/data/*.csv
 

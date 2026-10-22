@@ -5,10 +5,12 @@ review data** that currently sit in the repo under `DISCOVER_`-prefixed folders.
 captured here so the knowledge is preserved and the code can be implemented properly once
 the repository structure is definitive (the move to `output_databricks/` + `output_repository/`).
 
-**Status: parked, not wired in.** Nothing in `databricks/` imports these. The code folders
-still carry the on-prem import names (`from dashboard …`, `from functions …`,
-`from dataval …`) and the `dataval` package + `streamlit_app.py` are missing, so they will
-not run as-is.
+**Status: removed from the working tree, archived here.** The `DISCOVER_*` folders were
+deleted from `main` once documented; recover them from git history if needed
+(`git show <commit>:DISCOVER_…`, or `git checkout e7e568d -- DISCOVER_validation_data`). They
+were never wired in — the code carried the on-prem import names (`from dashboard …`,
+`from functions …`, `from dataval …`) and the `dataval` package + `streamlit_app.py` were
+missing, so they would not have run as-is.
 
 | Folder | What | Doc |
 |---|---|---|
