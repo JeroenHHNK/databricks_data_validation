@@ -107,10 +107,30 @@ def name_series(meetreeks_id: str, code: str | None, bronsysteem: str | None,
 
 
 # --- SQL builders (run on Spark) --------------------------------------------
-def series_catalog_sql() -> str:
+def series_catalog_sql(include_location: bool = True) -> str:
     """One row per series: the dimension needed to name files and build
-    OBJECT_DATA. Left-joins `meetlocatie` best-effort (join may be unpopulated).
+    OBJECT_DATA. With `include_location`, left-joins `meetlocatie` for coordinates
+    and the water-level area; set it False to fall back to meetreeks-only when the
+    `hl_cs_objecten` grant is absent (DATABRICKS_layer_cs_objecten.md §6). The
+    column list is identical either way — the location columns come back NULL — so
+    downstream code never has to branch on which variant ran.
     """
+    if include_location:
+        loc_cols = """
+            l.peilgebiedpraktijk_code         AS peilgebied_code,
+            CAST(l.rd_xcoordinaat AS double)  AS rd_x,
+            CAST(l.rd_ycoordinaat AS double)  AS rd_y,
+            CAST(l.wgs84_xcoordinaat AS double) AS lon,
+            CAST(l.wgs84_ycoordinaat AS double) AS lat"""
+        loc_join = f"LEFT JOIN {MEETLOCATIE} l ON l.id = r.meetlocatie_object_id"
+    else:
+        loc_cols = """
+            CAST(NULL AS string) AS peilgebied_code,
+            CAST(NULL AS double) AS rd_x,
+            CAST(NULL AS double) AS rd_y,
+            CAST(NULL AS double) AS lon,
+            CAST(NULL AS double) AS lat"""
+        loc_join = ""
     return f"""
         SELECT
             r.id                              AS meetreeks_id,
@@ -120,15 +140,9 @@ def series_catalog_sql() -> str:
             CAST(r.begin_filter AS double)    AS begin_filter,
             CAST(r.eind_filter  AS double)    AS eind_filter,
             CAST(r.bovenkant_peilbuis AS double) AS bovenkant_peilbuis,
-            r.eenheid                         AS eenheid,
-            l.peilgebiedpraktijk_code         AS peilgebied_code,
-            CAST(l.rd_xcoordinaat AS double)  AS rd_x,
-            CAST(l.rd_ycoordinaat AS double)  AS rd_y,
-            CAST(l.wgs84_xcoordinaat AS double) AS lon,
-            CAST(l.wgs84_ycoordinaat AS double) AS lat
+            r.eenheid                         AS eenheid,{loc_cols}
         FROM {MEETREEKS} r
-        LEFT JOIN {MEETLOCATIE} l
-               ON l.id = r.meetlocatie_object_id
+        {loc_join}
         WHERE r.id IN (SELECT DISTINCT {SERIES_KEY} FROM {METING})
     """
 
