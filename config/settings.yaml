@@ -7,9 +7,12 @@
 
 # --- Where the validation tooling reads its raw per-sensor input ---
 # Replaces the old input_data/ + convert-fugro/convert-wiertsema flow. The
-# Databricks export job (02_export_to_git.py) writes here, git carries it, and
-# the local IDE pulls it. See databricks/lib/source_read.py for the layout.
-source_data_dir: source_data
+# Databricks export job (02_export_to_git.py) writes a flat per-series CSV folder
+# plus one combined metadata table; git carries it, the local IDE pulls it.
+#   time_series_data/<series>.csv   (Time,head)
+#   metadata/object_data.csv        (one row per series; join on `filename`)
+time_series_dir: time_series_data
+metadata_file: metadata/object_data.csv
 
 # --- Review state (git-tracked, frozen schema) ---
 validation_data_dir: validation_data

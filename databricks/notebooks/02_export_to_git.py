@@ -4,15 +4,19 @@
 # environment_version = "6"
 # ///
 # MAGIC %md
-# MAGIC # 02 · Export the copy -> source_data/
-# MAGIC Turns the personal-workspace Delta copy into the `source_data/` CSV layout the
-# MAGIC validation toolkit reads, writing it into the Git folder working tree.
+# MAGIC # 02 · Export the copy -> time_series_data/ + metadata/
+# MAGIC Turns the personal-workspace Delta copy into a flat per-series CSV layout plus one
+# MAGIC combined metadata table, written into the Git folder working tree.
 # MAGIC
 # MAGIC Layout (forward-slashed, git-tracked):
 # MAGIC ```
-# MAGIC source_data/<vendor>/<origin>/<series>.csv     # Time,head  (hourly, gaps dropped)
-# MAGIC source_data/<vendor>/<origin>/OBJECT_DATA.csv   # filter depths + cross-section per series
+# MAGIC time_series_data/<series>.csv     # Time,head  (hourly, gaps dropped); one file per series
+# MAGIC metadata/object_data.csv          # one row per series: filename, ids, vendor, filters, coords
 # MAGIC ```
+# MAGIC Flat data + a single metadata CSV is easier to loop over than nested vendor/origin
+# MAGIC folders: read `metadata/object_data.csv`, and for each row open
+# MAGIC `time_series_data/<filename>.csv`.
+# MAGIC
 # MAGIC `transport` controls shipping:
 # MAGIC * **`write`** (default) — only write the files; **commit & push manually** from the
 # MAGIC   Databricks Git-folder UI. Needs no shell `git`, so it also runs on serverless.
@@ -20,28 +24,9 @@
 # MAGIC * `volume` — copy to the misc_files Volume for the local CLI bridge.
 
 # COMMAND ----------
-
-print("ROOT:", ROOT)
-print("lib dir:", os.path.join(ROOT, "databricks", "lib"))
-print("exists:", os.path.isdir(os.path.join(ROOT, "databricks", "lib")))
-print(os.listdir(os.path.join(ROOT, "databricks", "lib")) if os.path.isdir(os.path.join(ROOT, "databricks", "lib")) else "missing")
-
-# COMMAND ----------
-
-nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-# e.g. /Workspace/Users/you/repo/notebooks/transformation/run_x  -> walk up to the repo root
-ROOT = dbutils.widgets.get("repo_root").strip()
-if not ROOT:
-    p = "/Workspace" + nb_path if not nb_path.startswith("/Workspace") else nb_path
-    while p and not os.path.isdir(os.path.join(p, "databricks", "lib")):
-        p = os.path.dirname(p)
-        if p in ("", "/"):
-            raise FileNotFoundError("Could not find databricks/lib above the notebook; set the repo_root widget.")
-    ROOT = p
-
-# COMMAND ----------
-
+# Setup: imports, widgets, resolve the repo root, import the shared library.
 import os
+import shutil
 import sys
 
 dbutils.widgets.text("output_catalog", "waterkeringbeheer_prd")
@@ -57,7 +42,7 @@ TRANSPORT = dbutils.widgets.get("transport")
 BRANCH = dbutils.widgets.get("branch")
 RUN_ID = dbutils.widgets.get("run_id").strip() or "manual"
 
-# Repo root: widget if set, otherwise walk up from the notebook until databricks/lib is found
+# Repo root: widget if set, otherwise walk up from the notebook until databricks/lib is found.
 ROOT = dbutils.widgets.get("repo_root").strip()
 if not ROOT:
     nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
@@ -75,38 +60,50 @@ if LIB not in sys.path:
 import git_sync  # noqa: E402
 import source_read as sr  # noqa: E402
 
-SOURCE_DATA = os.path.join(ROOT, "source_data")
-print("ROOT:", ROOT)
-print("writing to:", SOURCE_DATA, "| transport:", TRANSPORT)
+TS_DIR = os.path.join(ROOT, "time_series_data")
+META_DIR = os.path.join(ROOT, "metadata")
+print("ROOT:", ROOT, "| transport:", TRANSPORT)
 
 # COMMAND ----------
-
-# Resolve names from the dimension.
-# One row per series with its vendor/origin/series tokens and metadata for OBJECT_DATA.
+# Resolve names from the dimension: meetreeks_id -> (SeriesName, metadata row).
 dim = spark.table(f"{OUT}.source_copy_meetreeks").toPandas()
 names = {}
 for _, r in dim.iterrows():
     sn = sr.name_series(r["meetreeks_id"], r.get("code"), r.get("bronsysteem"), r.get("sensor_sleutel"))
     names[r["meetreeks_id"]] = (sn, r)
-print(len(names), "series to export")
+print(len(names), "series in the dimension")
 
 # COMMAND ----------
-
-# Write per-series only_csv files + per-origin OBJECT_DATA.csv.
-# ONE global-sorted pass over source_copy_meting (not one query per series): rows
-# arrive grouped by meetreeks_id, so we buffer a single series at a time and flush
-# it to <vendor>/<origin>/<series>.csv. The table is partitioned by vendor, so a
-# per-series .where() can't prune and would rescan millions of rows 693 times;
-# this scans once and keeps driver memory bounded to one series.
+# Write one flat CSV per series + one combined metadata/object_data.csv.
+# ONE global-sorted pass over source_copy_meting (not one query per series): rows arrive
+# grouped by meetreeks_id, so we buffer a single series at a time and flush it. The table
+# is partitioned by vendor, so a per-series .where() can't prune and would rescan millions
+# of rows per series; this scans once and keeps driver memory bounded to one series.
 import pandas as pd  # noqa: E402
+
+# Clean the output dirs so a rerun never leaves stale series behind.
+for d in (TS_DIR, META_DIR):
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(d, exist_ok=True)
 
 ordered = (spark.table(f"{OUT}.source_copy_meting")
                 .select("meetreeks_id", "timestamp", "head")
                 .orderBy("meetreeks_id", "timestamp"))
 
-written = []
-object_rows: dict[tuple[str, str], list[dict]] = {}
+used_names: dict[str, str] = {}   # chosen filename stem -> meetreeks_id (collision guard)
+meta_rows: list[dict] = []
+written_rel: list[str] = []
 missing = 0
+
+
+def _filename(sn) -> str:
+    """Unique, human-readable stem. Codes can repeat across wells, so on a collision
+    append a short slice of the (unique) meetreeks_id."""
+    stem = sn.series
+    if used_names.get(stem, sn.meetreeks_id) != sn.meetreeks_id:
+        stem = f"{sn.series}__{sn.meetreeks_id[:12]}"
+    used_names[stem] = sn.meetreeks_id
+    return stem
 
 
 def _flush(mid, rows):
@@ -118,17 +115,17 @@ def _flush(mid, rows):
         missing += 1
         return
     sn, meta = entry
-    rel = sn.rel_csv
-    dst = os.path.join(SOURCE_DATA, *rel.split("/"))
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    pd.DataFrame(rows, columns=["Time", "head"]).to_csv(dst, index=False)
-    written.append(os.path.join("source_data", *rel.split("/")))
-    object_rows.setdefault((sn.vendor, sn.origin), []).append({
-        "series": sn.series, "meetreeks_id": mid, "code": meta.get("code"),
+    stem = _filename(sn)
+    pd.DataFrame(rows, columns=["Time", "head"]).to_csv(os.path.join(TS_DIR, stem + ".csv"), index=False)
+    written_rel.append(f"time_series_data/{stem}.csv")
+    meta_rows.append({
+        "filename": stem, "meetreeks_id": mid, "vendor": sn.vendor, "origin": sn.origin,
+        "series": sn.series, "code": meta.get("code"),
         "begin_filter": meta.get("begin_filter"), "eind_filter": meta.get("eind_filter"),
         "bovenkant_peilbuis": meta.get("bovenkant_peilbuis"),
         "peilgebied_code": meta.get("peilgebied_code"),
         "lon": meta.get("lon"), "lat": meta.get("lat"),
+        "n_rows": len(rows),
     })
 
 
@@ -142,18 +139,15 @@ for row in ordered.toLocalIterator():
         buf.append((row["timestamp"], row["head"]))
 _flush(cur, buf)
 
-for (vendor, origin), rows in object_rows.items():
-    rel = f"{vendor}/{origin}/OBJECT_DATA.csv"
-    dst = os.path.join(SOURCE_DATA, *rel.split("/"))
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    pd.DataFrame(rows).to_csv(dst, index=False)
-    written.append(os.path.join("source_data", *rel.split("/")))
+# One combined metadata table (sorted for a stable, reviewable diff).
+meta_df = pd.DataFrame(meta_rows).sort_values(["vendor", "origin", "series"]).reset_index(drop=True)
+meta_df.to_csv(os.path.join(META_DIR, "object_data.csv"), index=False)
+written_rel.append("metadata/object_data.csv")
 
-print(f"wrote {len(written)} files under source_data/ "
-      f"({len(object_rows)} OBJECT_DATA.csv, {missing} series without a dimension name)")
+print(f"wrote {len(meta_rows)} series to time_series_data/ and metadata/object_data.csv "
+      f"({missing} series in the copy without a dimension name)")
 
 # COMMAND ----------
-
 # Ship it.
 def git_token():
     spec = dbutils.widgets.get("git_token_secret").strip()
@@ -169,16 +163,16 @@ def git_token():
 
 if TRANSPORT == "git":
     git_sync.commit_and_push(
-        ROOT, paths=["source_data"],
-        message=f"source replication: run {RUN_ID} ({len(names)} series)",
+        ROOT, paths=["time_series_data", "metadata"],
+        message=f"source replication: run {RUN_ID} ({len(meta_rows)} series)",
         branch=BRANCH, token=git_token())
-    print("committed & pushed source_data/")
+    print("committed & pushed time_series_data/ + metadata/")
 elif TRANSPORT == "volume":
-    dest = git_sync.write_tree_to_volume(ROOT, written)
+    dest = git_sync.write_tree_to_volume(ROOT, written_rel)
     print("copied to Volume for the local bridge:", dest)
     print("Now, on a machine with the Databricks CLI, run the bridge in databricks/README.md")
 else:  # "write" (default): leave the files in the working tree; push manually
-    print(f"{len(written)} files written to the Git folder working tree under source_data/.")
+    print(f"{len(written_rel)} files written under time_series_data/ + metadata/.")
     print("Nothing pushed. Commit & push from Databricks (Git folder UI) when ready.")
 
-dbutils.notebook.exit(str(len(written)))
+dbutils.notebook.exit(str(len(meta_rows)))
