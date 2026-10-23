@@ -18,6 +18,15 @@ missing, so they would not have run as-is.
 | `DISCOVER_functions/` | Validation algorithms + Pastas/forcing/plot helpers (7 modules) | [DISCOVER_functions.md](DISCOVER_functions.md) |
 | `DISCOVER_validation_data/` | 325 hand-curated review CSVs (the existing audit trail) | [DISCOVER_validation_data.md](DISCOVER_validation_data.md) |
 
+## Status (2026-10-22)
+
+Implemented from the on-prem repo `data_validation/` and its `agent_streamlit_prompt.md`:
+the review store (`local_validation/validation_store.py`, verbatim), the checks
+(`local_validation/checks.py`), the store merge/sync (`local_validation/stores.py`) and the
+dashboard (`streamlit_app.py` + `review_app/`, with a map landing page). Still open: points
+4 and 5 below (OBJECT_DATA reconciliation; migrating the 325 on-prem review CSVs into
+`input_output/output_repository/`).
+
 ## When we implement (the checklist these docs feed)
 
 1. Rename `DISCOVER_dashboard` → `dashboard`, `DISCOVER_functions` → `functions`; add the

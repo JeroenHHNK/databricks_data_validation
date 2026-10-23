@@ -6,6 +6,7 @@ authors = ["jvanruitenbeek <jmpvanruitenbeek@gmail.com>"]
 readme = "README.md"
 packages = [
     { include = "local_validation" },
+    { include = "review_app" },
     { include = "dataval" },
     { include = "dashboard" },
     { include = "functions" },

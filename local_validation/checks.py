@@ -195,29 +195,33 @@ def validate_series(raw: pd.Series, *, begin_filter=None, eind_filter=None,
 
 
 # --- Store-side application (local review store) -----------------------------
-AUTOFLAG_NOTE = {"rule_a": "autoflag rule A (sudden drop)", "rule_b": "autoflag rule B (at/below filter)"}
+# Kept short: store notes are capped at 30 characters (settings `notes_max_len`).
+AUTOFLAG_NOTE = {"rule_a": "auto: rule A", "rule_b": "auto: rule B"}
 
 
 def apply_autoflags(store: pd.DataFrame, flags: pd.DataFrame, *, apply_rule_a: bool = False,
                     apply_rule_b: bool = True) -> tuple[pd.DataFrame, int]:
     """Fold rule A/B hits into a review store (`timestamp,raw_data,gecontroleerd,afgekeurd,note`).
 
-    Sets `afgekeurd = 1` and appends a note on matching rows, **only** where
-    `gecontroleerd == 0` — a human verdict is never overwritten. `gecontroleerd` is
-    left at 0 so the reviewer still sees the row as awaiting confirmation. `flags` has
-    `timestamp` + `rule_a`/`rule_b`. Returns the new store and the number of rows changed.
+    Same contract as the on-prem `dataval autoflag`: the only write is `afgekeurd = 1`
+    plus an `auto: ...` note, and **only** on rows with `gecontroleerd == 0` that are not
+    already rejected — a human verdict always wins, and nothing is ever cleared.
+    `gecontroleerd` stays 0, so the row reads as "auto-rejected, awaiting confirmation"
+    until a reviewer confirms or overrules it. `flags` has `timestamp` + `rule_a`/`rule_b`.
+    Returns the new store and the number of rows changed.
     """
     rules = [r for r, on in (("rule_a", apply_rule_a), ("rule_b", apply_rule_b)) if on]
     out = store.copy()
-    if not rules or flags.empty:
+    if not rules or flags.empty or out.empty:
         return out, 0
     f = flags.set_index(pd.to_datetime(flags["timestamp"]))[rules].astype(bool)
-    hit = f.reindex(pd.to_datetime(out["timestamp"])).fillna(False)
+    f = f[~f.index.duplicated()]
+    hit = f.reindex(pd.to_datetime(out["timestamp"]), fill_value=False)
     hit.index = out.index
-    any_hit = hit.any(axis=1) & (out["gecontroleerd"].astype(int) == 0) & (out["afgekeurd"].astype(int) == 0)
-    for idx in out.index[any_hit]:
-        note = "; ".join(AUTOFLAG_NOTE[r] for r in rules if hit.at[idx, r])
+    todo = hit.any(axis=1) & (out["gecontroleerd"].astype(int) == 0) & (out["afgekeurd"].astype(int) == 0)
+    for idx in out.index[todo]:
         prev = str(out.at[idx, "note"] or "")
-        out.at[idx, "note"] = f"{prev}; {note}" if prev else note
-    out.loc[any_hit, "afgekeurd"] = 1
-    return out, int(any_hit.sum())
+        new = [AUTOFLAG_NOTE[r] for r in rules if hit.at[idx, r] and AUTOFLAG_NOTE[r] not in prev]
+        out.at[idx, "note"] = "; ".join([prev, *new] if prev else new)
+    out.loc[todo, "afgekeurd"] = 1
+    return out, int(todo.sum())

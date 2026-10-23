@@ -113,7 +113,9 @@ def test_apply_autoflags_never_touches_reviewed_rows():
     assert n == 2 - 1                                       # row 0 reviewed, row 1 only rule A
     assert out["afgekeurd"].tolist() == [0, 0, 1]
     assert out["gecontroleerd"].tolist() == [1, 0, 0]
-    assert out.at[2, "note"] == "x; autoflag rule B (at/below filter)"
+    assert out.at[2, "note"] == "x; auto: rule B"
+    again, n_again = val.apply_autoflags(out, flags)      # re-run: nothing new, no duplicate note
+    assert n_again == 0 and again.at[2, "note"] == "x; auto: rule B"
     out, n = val.apply_autoflags(store, flags, apply_rule_a=True)
     assert out["afgekeurd"].tolist() == [0, 1, 1] and n == 2
 

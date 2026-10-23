@@ -32,7 +32,9 @@ output_data_dir: output_data
 forcing_dir: data/forcing
 forcing_station: 249
 
-# --- Validation store ---
+# --- Validation store (layer 3; one <filename>.csv per series in repository_output_dir) ---
+# Notes in the store are capped at this many characters (review app).
+notes_max_len: 30
 # FROZEN. Do not change: breaks merge compatibility with existing review work.
 store:
   frequency: "1h"
