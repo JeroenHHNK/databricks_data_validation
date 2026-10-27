@@ -44,7 +44,9 @@ def flag_hints(flags: pd.DataFrame) -> pd.DataFrame:
 def build_figure(store: pd.DataFrame, hints: pd.DataFrame | None = None, *, title: str = "",
                  eind_filter: float | None = None, top_of_well: float | None = None,
                  v3_band: float = 0.15, stressor_data: dict | None = None,
-                 show_hints: tuple[str, ...] = tuple(HINT_STYLE)) -> go.Figure:
+                 stressor_freq: str = "1h",
+                 show_hints: tuple[str, ...] = tuple(HINT_STYLE),
+                 x_range: tuple[pd.Timestamp, pd.Timestamp] | None = None) -> go.Figure:
     scatter_cls = go.Scattergl if len(store) > GL_THRESHOLD else go.Scatter
     fig = go.Figure()
     fig.add_trace(scatter_cls(
@@ -98,25 +100,42 @@ def build_figure(store: pd.DataFrame, hints: pd.DataFrame | None = None, *, titl
     has_stressors = stressor_data is not None and not store.empty
     if has_stressors:
         t0, t1 = store["timestamp"].min(), store["timestamp"].max()
-        prec = stressor_data["precipitation"].loc[t0:t1].resample("1D").sum()
-        evap = stressor_data["evaporation"].loc[t0:t1].resample("1D").sum()
-        fig.add_trace(go.Bar(x=prec.index, y=prec.values, yaxis="y2",
-                             marker_color="rgba(65,105,225,0.5)", name="Precipitation [mm/d]",
-                             hovertemplate="%{x|%Y-%m-%d}<br>%{y:.1f} mm<extra></extra>"))
-        fig.add_trace(go.Scatter(x=evap.index, y=evap.values, yaxis="y2", mode="lines",
-                                 line=dict(color="rgba(255,140,0,0.8)", width=1.5),
-                                 name="Evaporation [mm/d]",
-                                 hovertemplate="%{x|%Y-%m-%d}<br>%{y:.2f} mm<extra></extra>"))
-        max_p = float(prec.max()) if len(prec) and prec.max() > 0 else 1.0
+        hourly = stressor_freq == "1h"
+        unit, x_fmt = ("mm/h", "%Y-%m-%d %H:%M") if hourly else ("mm/d", "%Y-%m-%d")
+        prec = stressor_data["precipitation"].loc[t0:t1]
+        evap = stressor_data["evaporation"].loc[t0:t1]
+        if not hourly:
+            prec, evap = prec.resample("1D").sum(), evap.resample("1D").sum()
+        wet = prec[prec > 0]   # dry hours draw nothing; skipping them keeps hourly bars light
+        fig.add_trace(go.Bar(x=wet.index, y=wet.values, yaxis="y2",
+                             marker_color="rgba(65,105,225,0.5)", name=f"Precipitation [{unit}]",
+                             hovertemplate=f"%{{x|{x_fmt}}}<br>%{{y:.1f}} mm<extra></extra>"))
+        evap_cls = go.Scattergl if len(evap) > GL_THRESHOLD else go.Scatter
+        fig.add_trace(evap_cls(x=evap.index, y=evap.values, yaxis="y2", mode="lines",
+                               line=dict(color="rgba(255,140,0,0.8)", width=1.5),
+                               name=f"Evaporation [{unit}]",
+                               hovertemplate=f"%{{x|{x_fmt}}}<br>%{{y:.2f}} mm<extra></extra>"))
+        max_p = float(wet.max()) if len(wet) else 1.0
+        axis_unit = unit
 
     layout = dict(
         title=title, template="plotly_white", hovermode="closest", height=540,
         legend=dict(orientation="h", y=1.14, x=0.5, xanchor="center"),
         margin=dict(t=90, r=60 if has_stressors else 20, b=40, l=60),
         xaxis_title="Time", yaxis_title="Head [m NAP]",
-        uirevision="keep", dragmode="zoom")
+        uirevision="keep", dragmode="select")
+    if x_range is not None:
+        # zoom to the selected period; a new uirevision makes plotly apply it over the user's zoom
+        x0, x1 = x_range
+        pad = max((x1 - x0) * 0.02, pd.Timedelta(hours=1))
+        layout["xaxis"] = dict(range=[x0 - pad, x1 + pad])
+        layout["uirevision"] = f"{x0}/{x1}"
+        y = store.loc[store["timestamp"].between(x0, x1), "raw_data"].dropna()
+        if len(y):
+            ypad = max((y.max() - y.min()) * 0.1, 0.05)
+            layout["yaxis"] = dict(range=[y.min() - ypad, y.max() + ypad])
     if has_stressors:
-        layout["yaxis2"] = dict(title="P / E [mm/d]", overlaying="y", side="right",
+        layout["yaxis2"] = dict(title=f"P / E [{axis_unit}]", overlaying="y", side="right",
                                 range=[max_p * 3, 0], showgrid=False)
     fig.update_layout(**layout)
     return fig

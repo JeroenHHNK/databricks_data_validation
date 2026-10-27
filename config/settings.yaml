@@ -29,8 +29,12 @@ repository_output_dir: input_output/output_repository
 output_data_dir: output_data
 
 # --- KNMI forcing committed to the repo (cluster has no egress) ---
+# forcing_file is written by local_validation/knmi_forcing.ipynb (hourly KNMI station
+# forcing_station: precipitation_mm, makkink_mm) and is the review app's default overlay;
+# any other CSV in forcing_dir is offered as well.
+forcing_file: input_output/knmi_berkhout.csv
 forcing_dir: data/forcing
-forcing_station: 249
+forcing_station: 249 # Berkhout
 
 # --- Validation store (layer 3; one <filename>.csv per series in repository_output_dir) ---
 # Notes in the store are capped at this many characters (review app).

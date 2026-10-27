@@ -48,7 +48,8 @@ Source and store join 1:1 on the filename stem; never rename one without the oth
 | `streamlit_app.py`, `review_app/` | The review dashboard: Map (landing), Review, Overview |
 | `config/settings.yaml` | Paths, thresholds, autoflag switches, `notes_max_len` |
 | `tests/` | `python -m pytest tests`: checks, merge contract, layer guard, store sync, RD conversion |
-| `data/forcing/` | Optional KNMI forcing CSV for the plot overlay (`precipitation_mm`, `makkink_mm`) |
+| `input_output/knmi_berkhout.csv` | Hourly KNMI forcing, Berkhout (249), from 2020: `precipitation_mm`, `makkink_mm`. Rebuilt by `local_validation/knmi_forcing.ipynb`; the review app's default overlay |
+| `data/forcing/` | Extra KNMI forcing CSVs for the plot overlay (`precipitation_mm`, `makkink_mm`) |
 
 ## Validation
 
@@ -82,7 +83,7 @@ a human has reviewed.
 ## The review dashboard
 
 ```bash
-streamlit run streamlit_app.py --server.port 8502
+-m streamlit run streamlit_app.py --server.port 8502
 ```
 
 - **Map** (landing page): every series with location metadata on a PDOK or OpenStreetMap

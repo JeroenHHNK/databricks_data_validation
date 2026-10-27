@@ -38,7 +38,7 @@ def _load(settings: dict, filename: str) -> None:
     st.session_state.update(
         rv_filename=filename, rv_row=row, rv_rs=rs, rv_store=rs.store, rv_dirty=False,
         rv_hints=plotting.flag_hints(rs.flags), rv_checks=checks_per_ts.str.strip(),
-        rv_chart_n=st.session_state.get("rv_chart_n", 0) + 1)
+        rv_chart_n=st.session_state.get("rv_chart_n", 0) + 1, rv_range=None)
 
 
 def _save(settings: dict) -> None:
@@ -120,7 +120,7 @@ def _sidebar(settings: dict, meta: pd.DataFrame) -> str | None:
     files = common.stressor_files()
     st.session_state.rv_stressor = None
     if files:
-        choice = sb.selectbox("KNMI forcing", ["None", *files],
+        choice = sb.selectbox("KNMI forcing", ["None", *files], index=1,
                               format_func=lambda p: p if p == "None" else p.replace("\\", "/").split("/")[-1])
         if choice != "None":
             data = common.load_stressor_csv(choice)
@@ -128,8 +128,12 @@ def _sidebar(settings: dict, meta: pd.DataFrame) -> str | None:
                 sb.error(data["error"])
             else:
                 st.session_state.rv_stressor = data
+            st.session_state.rv_stressor_freq = sb.segmented_control(
+                "Forcing resolution", ["1h", "1D"], default="1h", key="rv_stressor_freq_choice",
+                format_func={"1h": "Hourly", "1D": "Daily"}.get) or "1h"
     else:
-        sb.caption("No KNMI forcing CSV in data/forcing/ (precipitation_mm, makkink_mm).")
+        sb.caption("No KNMI forcing CSV: run local_validation/knmi_forcing.ipynb "
+                   "(writes input_output/knmi_berkhout.csv).")
     st.session_state.rv_hint_cols = tuple(sb.multiselect(
         "Show check hints", list(plotting.HINT_STYLE), default=list(plotting.HINT_STYLE),
         format_func=lambda c: plotting.HINT_STYLE[c][2]))
@@ -137,6 +141,12 @@ def _sidebar(settings: dict, meta: pd.DataFrame) -> str | None:
 
 
 # --- main --------------------------------------------------------------------
+def _on_select() -> None:
+    """Remember the selected period ourselves: Streamlit keys the chart's selection state on
+    the figure spec, so it is dropped as soon as the figure changes (zoom, recolouring)."""
+    st.session_state.rv_range = _plot_range()
+
+
 def _plot_range() -> tuple[pd.Timestamp, pd.Timestamp] | None:
     """Time range of the current box/lasso selection on the review plot, if any."""
     ev = st.session_state.get(f"rv_chart_{st.session_state.rv_chart_n}")
@@ -235,16 +245,21 @@ def render() -> None:
         SHOW_OPTIONS[4]: pd.Series(True, index=store.index),
     }[show]
 
-    rng = _plot_range()
+    rng = st.session_state.get("rv_range")
     if rng:
-        mask &= store["timestamp"].between(*rng)
+        in_rng = store["timestamp"].between(*rng)
+        mask &= in_rng
         r1, r2 = st.columns([4, 1])
-        r1.caption(f"Plot selection: {rng[0]:%Y-%m-%d %H:%M} → {rng[1]:%Y-%m-%d %H:%M}")
+        r1.caption(f"Plot selection: {rng[0]:%Y-%m-%d %H:%M} → {rng[1]:%Y-%m-%d %H:%M} · "
+                   f"**{int(in_rng.sum())}** timestamps selected, **{int(mask.sum())}** match "
+                   f"\"{show}\"")
         if r2.button("Clear selection"):
+            st.session_state.rv_range = None
             st.session_state.rv_chart_n += 1
             st.rerun()
     else:
-        st.caption("Tip: drag a box on the plot to limit this table to that period.")
+        st.caption("Tip: drag a box on the plot to zoom to that period and limit this table to it. "
+                   "The modebar zoom tool only zooms the chart; it does not filter the table.")
 
     view = store[mask]
     view_capped = view.head(int(max_rows))
@@ -301,6 +316,8 @@ def render() -> None:
             eind_filter=checks.as_float(row.eind_filter),
             top_of_well=checks.as_float(row.bovenkant_peilbuis), v3_band=th.v3_band,
             stressor_data=st.session_state.get("rv_stressor"),
-            show_hints=st.session_state.get("rv_hint_cols", tuple(plotting.HINT_STYLE)))
+            stressor_freq=st.session_state.get("rv_stressor_freq", "1h"),
+            show_hints=st.session_state.get("rv_hint_cols", tuple(plotting.HINT_STYLE)),
+            x_range=rng)
         st.plotly_chart(fig, width="stretch", key=f"rv_chart_{st.session_state.rv_chart_n}",
-                        on_select="rerun", selection_mode=("box", "lasso"))
+                        on_select=_on_select, selection_mode=("box", "lasso"))

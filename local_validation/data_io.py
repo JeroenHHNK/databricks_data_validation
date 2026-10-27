@@ -34,6 +34,7 @@ DEFAULTS = {
     "validated_dir": "output_data/validated",
     "validation_summary_file": "output_data/validation_summary.csv",
     "repository_output_dir": "input_output/output_repository",
+    "forcing_file": "input_output/knmi_berkhout.csv",
     "forcing_dir": "data/forcing",
     "notes_max_len": 30,
     "store": {"frequency": "1h"},

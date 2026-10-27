@@ -58,8 +58,11 @@ def summary() -> pd.DataFrame | None:
 
 @st.cache_data
 def stressor_files() -> list[str]:
+    """The KNMI notebook's `forcing_file` first (the default overlay), then forcing_dir."""
+    main = data_io._path(settings(), "forcing_file")
     d = data_io._path(settings(), "forcing_dir")
-    return sorted(str(p) for p in d.glob("*.csv")) if d.is_dir() else []
+    extra = sorted(str(p) for p in d.glob("*.csv")) if d.is_dir() else []
+    return ([str(main)] if main.is_file() else []) + [p for p in extra if p != str(main)]
 
 
 @st.cache_data
